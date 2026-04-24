@@ -1,0 +1,987 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, interactive-widget=resizes-content">
+    <title>ZELFA // TERMINAL</title>
+    <!-- Markdown & Highlight.js -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    
+    <style id="theme-style">
+        :root {
+            --header-bg: #000000;
+            --header-green: #00ff41;
+            --alert-red: #ff3333;
+            --bg: #050505;
+            --sidebar-bg: #000000;
+            --term-color: #00ff41;
+            --text-main: #dddddd;
+            --border-main: #333333;
+            --bubble-ai-bg: rgba(127, 127, 127, 0.05);
+            --bubble-user-bg: rgba(0, 255, 255, 0.05);
+            --user-cyan: #0ff;
+            --edit-bg: #111;
+            --base-font-size: 16px;
+        }
+    </style>
+
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            background-color: var(--bg); color: var(--text-main);
+            font-family: 'Courier New', Courier, monospace; margin: 0;
+            height: 100dvh; width: 100vw; display: flex;
+            overflow: hidden; transition: background-color 0.2s, color 0.2s;
+            font-size: var(--base-font-size);
+        }
+        body::before {
+            content: " "; display: block; position: absolute; top: 0; left: 0; bottom: 0; right: 0;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 255, 0, 0.06));
+            z-index: 9999; background-size: 100% 2px, 3px 100%; pointer-events: none;
+        }
+
+        /* ============ SIDEBAR ============ */
+        #sidebar {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            left: 0;
+            width: 280px;
+            max-width: 85vw;
+            background: var(--sidebar-bg);
+            border-right: 1px solid var(--border-main);
+            display: flex;
+            flex-direction: column;
+            transition: transform 0.25s ease, background 0.2s;
+            z-index: 2000;
+        }
+        #sidebar.hidden {
+            transform: translateX(-100%);
+        }
+        #sidebar-header {
+            padding: 15px;
+            border-bottom: 1px solid var(--border-main);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+        }
+        #sidebar-header span {
+            color: var(--header-green);
+            font-weight: bold;
+            letter-spacing: 2px;
+            font-size: 0.9rem;
+        }
+        #new-chat-btn {
+            background: transparent;
+            border: 1px solid var(--header-green);
+            color: var(--header-green);
+            padding: 6px 12px;
+            cursor: pointer;
+            font-family: inherit;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            white-space: nowrap;
+        }
+        #new-chat-btn:hover {
+            background: var(--header-green);
+            color: #000;
+        }
+        
+        /* Mobile specific close inside sidebar */
+        #sidebar-close-mobile {
+            display: none;
+            background: transparent;
+            border: none;
+            color: var(--header-green);
+            font-size: 1.5rem;
+            cursor: pointer;
+        }
+
+        #chat-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .chat-item {
+            border: 1px solid var(--border-main);
+            padding: 10px 10px;
+            border-radius: 8px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(127,127,127,0.05);
+            transition: background 0.15s, border-color 0.15s;
+            min-height: 44px;
+            color: var(--text-main);
+        }
+        .chat-item.active {
+            border-color: var(--header-green);
+            background: rgba(0,255,65,0.08);
+            box-shadow: inset 0 0 5px rgba(0,255,65,0.2);
+        }
+        .chat-item:hover {
+            background: rgba(127,127,127,0.15);
+        }
+        .chat-title {
+            flex: 1;
+            font-size: 0.85rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            color: inherit;
+        }
+        .chat-actions {
+            display: flex;
+            gap: 6px;
+            opacity: 0.5;
+            transition: 0.2s;
+        }
+        .chat-item:hover .chat-actions {
+            opacity: 1;
+        }
+        .chat-action-btn {
+            background: transparent;
+            border: 1px solid var(--term-color);
+            color: var(--term-color);
+            width: 26px;
+            height: 26px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            border-radius: 4px;
+            flex-shrink: 0;
+        }
+        .chat-action-btn svg { width: 14px; height: 14px; fill: currentColor; }
+        .chat-action-btn:hover {
+            background: var(--term-color);
+            color: var(--bg);
+        }
+        .chat-action-btn.btn-red {
+            border-color: var(--alert-red);
+            color: var(--alert-red);
+        }
+        .chat-action-btn.btn-red:hover {
+            background: var(--alert-red);
+            color: #fff;
+        }
+
+        /* ============ MAIN APP ============ */
+        #app {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+            position: relative;
+            transition: padding-left 0.25s ease;
+            padding-left: 280px;
+        }
+        #app.expanded {
+            padding-left: 0;
+        }
+
+        header {
+            padding: 10px 15px; border-bottom: 1px solid var(--border-main);
+            display: flex; justify-content: space-between; align-items: center;
+            background: var(--header-bg) !important; z-index: 1000; flex-shrink: 0; height: 50px;
+        }
+        header div { color: var(--header-green) !important; font-weight: bold; letter-spacing: 2px; }
+
+        header button {
+            background: transparent !important; color: var(--header-green) !important; 
+            border: 1px solid var(--header-green) !important; padding: 5px; cursor: pointer; font-family: inherit;
+        }
+
+        #left-header-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        #sidebar-toggle {
+            width: 34px;
+            height: 34px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            border: 1px solid var(--header-green);
+            color: var(--header-green);
+            background: transparent;
+            border-radius: 6px;
+        }
+        #sidebar-toggle svg {
+            width: 20px;
+            height: 20px;
+            fill: currentColor;
+        }
+        #sidebar-toggle:hover {
+            background: var(--header-green);
+            color: #000;
+        }
+
+        #chat-box {
+            flex: 1;
+            overflow-y: auto;
+            padding: 26px 32px;
+            display: flex;
+            flex-direction: column;
+            gap: 35px;
+            width: 100%;
+            max-width: 1100px;
+            margin: 0 auto;
+        }
+
+        #app.expanded #chat-box {
+            max-width: 1200px;
+        }
+
+        .msg-container { display: flex; flex-direction: column; gap: 8px; max-width: 100%; }
+        .msg-container.user { align-items: flex-end; }
+        .msg-container.ai { align-items: flex-start; }
+
+        .msg { max-width: 100%; padding: 15px; line-height: 1.6; position: relative; font-size: 1.05rem; }
+        .msg-user { text-align: right; border-right: 4px solid var(--user-cyan); color: var(--user-cyan); background: var(--bubble-user-bg); max-width: 90%; white-space: pre-wrap; }
+        .msg-ai { border-left: 4px solid var(--term-color); color: var(--text-main); background: var(--bubble-ai-bg); width: 100%; }
+
+        /* 動作按鈕 */
+        .msg-actions { display: flex; gap: 10px; opacity: 0.4; transition: 0.3s; margin-top: 4px; }
+        .msg-actions:hover { opacity: 1; }
+        .action-btn {
+            background: transparent; border: 1px solid var(--term-color);
+            color: var(--term-color); width: 32px; height: 32px;
+            display: flex; align-items: center; justify-content: center; cursor: pointer; border-radius: 4px;
+        }
+        .action-btn svg { width: 18px; height: 18px; fill: currentColor; }
+        .action-btn:hover { background: var(--term-color); color: var(--bg); }
+        .action-btn.btn-red { border-color: var(--alert-red); color: var(--alert-red); }
+        .action-btn.btn-red:hover { background: var(--alert-red); color: #fff; }
+
+        .edit-area { width: 100%; background: var(--edit-bg); border: 1px solid var(--user-cyan); color: var(--user-cyan); padding: 12px; font-family: inherit; font-size: 1rem; outline: none; resize: vertical; min-height: 100px; }
+
+        /* Code Block */
+        .code-block { margin: 20px 0; border: 1px solid var(--border-main); background: #1e1e1e; border-radius: 4px; }
+        .code-header {
+            background: #2d2d2d; padding: 10px 15px; display: flex; justify-content: space-between; align-items: center;
+            font-size: 0.75rem; color: #aaa; border-bottom: 1px solid #444; position: sticky; top: 0; z-index: 10;
+        }
+        .code-info { display: flex; gap: 25px; font-family: 'Consolas', monospace; }
+        .code-btn { 
+            background: #444; border: 1px solid #666; color: #fff; padding: 6px; 
+            width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;
+            cursor: pointer; border-radius: 4px;
+        }
+        .code-btn svg { width: 18px; height: 18px; fill: currentColor; }
+        .code-btn:hover { background: var(--header-green); color: #000; }
+        .run-text-btn { 
+            background: transparent; border: 1px solid var(--user-cyan); color: var(--user-cyan);
+            padding: 0 12px; height: 32px; font-weight: bold; cursor: pointer; border-radius: 4px; font-size: 0.7rem;
+        }
+        .run-text-btn:hover { background: var(--user-cyan); color: #000; }
+
+        pre { margin: 0; padding: 0; overflow-x: auto; }
+        code { font-family: 'Consolas', monospace; display: block; padding: 15px; }
+
+        /* 表格固定白色框與動態文字色 */
+        .msg-ai table { border-collapse: collapse; width: 100%; margin: 15px 0; border: 1px solid var(--border-main) !important; }
+        .msg-ai th, .msg-ai td { border: 1px solid var(--border-main) !important; padding: 10px; text-align: left; color: inherit; }
+        .msg-ai th { background-color: rgba(127,127,127,0.1); color: var(--term-color); }
+
+        /* 輸入區 */
+        #input-area {
+            border-top: 1px solid var(--border-main);
+            padding: 18px 24px;
+            display: flex;
+            gap: 12px;
+            background: var(--bg);
+            z-index: 1000;
+            flex-shrink: 0;
+            align-items: flex-end;
+        }
+        #user-input { 
+            flex: 1; background: var(--edit-bg); border: 1px solid var(--border-main); 
+            color: var(--header-green); padding: 14px 16px; font-family: inherit; 
+            outline: none; font-size: 1.1rem; border-radius: 12px; 
+            resize: none; min-height: 52px; max-height: 240px; overflow-y: auto; line-height: 1.5; 
+        }
+        #send-btn { height: 52px; background: var(--header-green); font-weight: bold; color: #000; border: none; padding: 0 22px; cursor: pointer; border-radius: 12px; }
+        #send-btn.stop-mode { background: transparent; border: 1px solid var(--alert-red); color: var(--alert-red); }
+
+        .loading-dots { display: flex; align-items: center; gap: 6px; padding: 10px 0; }
+        .dot { width: 8px; height: 8px; background-color: var(--term-color); border-radius: 50%; animation: dot-pulse 1.2s infinite ease-in-out; }
+        @keyframes dot-pulse { 0%, 100% { transform: scale(0.5); opacity: 0.3; } 50% { transform: scale(1.2); opacity: 1; } }
+
+        .hacker-modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 99999; justify-content: center; align-items: center; }
+        .modal-win { width: 90%; max-width: 500px; background: var(--bg); border: 2px solid var(--header-green); display: flex; flex-direction: column; }
+        .modal-head { padding: 12px; background: rgba(127,127,127,0.1); border-bottom: 1px solid var(--header-green); color: var(--header-green); font-weight: bold; display: flex; justify-content: space-between; align-items: center; }
+        .modal-body { padding: 20px; color: var(--text-main); line-height: 1.5; overflow-y: auto; max-height: 70vh; }
+        .modal-foot { padding: 15px; display: flex; justify-content: flex-end; gap: 15px; border-top: 1px solid var(--border-main); }
+        .modal-btn { padding: 8px 20px; border: 1px solid var(--header-green); color: var(--header-green); background: transparent; cursor: pointer; }
+
+        .runner-modal-win { width: 95%; max-width: 1200px; height: 90vh; }
+        .runner-close-btn { color: var(--alert-red); font-size: 2.5rem; cursor: pointer; padding: 0 10px; line-height: 0.8; transition: 0.2s; }
+        .runner-close-btn:hover { color: #fff; }
+        .runner-run-btn { color: var(--user-cyan); cursor: pointer; display: flex; align-items: center; gap: 10px; font-weight: bold; padding-left: 10px; }
+        #custom-modal { z-index: 100000; }
+
+        /* ============ SETTINGS BUTTON ============ */
+        #settings-btn {
+            position: fixed;
+            bottom: 18px;
+            left: 18px;
+            width: 46px;
+            height: 46px;
+            border-radius: 50%;
+            border: 1px solid var(--header-green);
+            background: var(--bg);
+            color: var(--header-green);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            z-index: 3000;
+            transition: 0.2s;
+        }
+        #settings-btn svg {
+            width: 22px;
+            height: 22px;
+            fill: currentColor;
+        }
+        #settings-btn:hover {
+            background: var(--header-green);
+            color: #000;
+        }
+
+        /* ============ SETTINGS MODAL ============ */
+        #settings-modal .modal-win {
+            max-width: 520px;
+        }
+        .settings-section {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .settings-section label {
+            font-size: 0.85rem;
+            color: #888;
+            font-weight: bold;
+        }
+        .settings-section select,
+        .settings-section button {
+            background: var(--bg);
+            border: 1px solid var(--border-main);
+            color: var(--text-main);
+            padding: 12px;
+            font-family: inherit;
+            font-size: 1rem;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+        .settings-section select optgroup {
+            background: var(--bg);
+            color: var(--header-green);
+            font-style: normal;
+            font-weight: bold;
+        }
+        .settings-section select option {
+            background: var(--bg);
+            color: var(--text-main);
+        }
+        .settings-section button:hover {
+            border-color: var(--header-green);
+        }
+        .danger-btn {
+            border-color: var(--alert-red) !important;
+            color: var(--alert-red) !important;
+        }
+        .danger-btn:hover {
+            background: var(--alert-red);
+            color: #fff !important;
+        }
+
+        /* ============ MOBILE ADJUSTMENTS ============ */
+        @media (max-width: 600px) {
+            :root {
+                --base-font-size: 18px;
+            }
+            #sidebar {
+                position: fixed;
+            }
+            #sidebar-close-mobile {
+                display: block;
+            }
+            #sidebar-toggle {
+                display: flex;
+            }
+            #app {
+                padding-left: 0;
+            }
+            #chat-box {
+                padding: 14px;
+                gap: 26px;
+            }
+            #input-area {
+                padding: 12px;
+            }
+            #user-input {
+                font-size: 1.1rem;
+            }
+            .msg {
+                font-size: 1.1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<!-- ================= SIDEBAR ================= -->
+<div id="sidebar">
+    <div id="sidebar-header">
+        <span>CHATS</span>
+        <div style="display:flex; gap:8px; align-items:center;">
+            <button id="new-chat-btn">+ New</button>
+            <button id="sidebar-close-mobile" onclick="hideSidebar()">×</button>
+        </div>
+    </div>
+    <div id="chat-list"></div>
+</div>
+
+<!-- ================= MAIN APP ================= -->
+<div id="app">
+
+<header>
+    <div id="left-header-group">
+        <button id="sidebar-toggle" title="Toggle chats">
+            <svg viewBox="0 0 24 24"><path d="M3 6h18v2H3V6zm0 5h18v2H3v-2zm0 5h18v2H3v-2z"/></svg>
+        </button>
+        <div>ZELFA // TERMINAL</div>
+    </div>
+</header>
+
+<div id="chat-box"></div>
+
+<div id="input-area">
+    <textarea id="user-input" placeholder="Execute command..." rows="1"></textarea>
+    <button id="send-btn" onclick="handleButtonClick()">SEND</button>
+</div>
+
+</div>
+
+<!-- ================= CONFIRM MODAL ================= -->
+<div id="custom-modal" class="hacker-modal">
+    <div class="modal-win">
+        <div class="modal-head" id="modal-title">SYSTEM PROMPT</div>
+        <div class="modal-body" id="modal-body-text">Confirm action?</div>
+        <div class="modal-foot">
+            <button class="modal-btn" onclick="closeAlert(false)">CANCEL</button>
+            <button class="modal-btn" style="border-color:var(--alert-red); color:var(--alert-red);" onclick="closeAlert(true)">EXECUTE</button>
+        </div>
+    </div>
+</div>
+
+<!-- ================= RUNNER MODAL ================= -->
+<div id="runner-modal" class="hacker-modal">
+    <div class="modal-win runner-modal-win">
+        <div class="modal-head">
+            <div class="runner-run-btn" id="modal-rerun-btn">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                <span>RE-RUN</span>
+            </div>
+            <div id="runner-label">Runner Console</div>
+            <div class="runner-close-btn" onclick="closeRunner()">×</div>
+        </div>
+        <div style="flex:1; display:flex; flex-direction:column; overflow:hidden;">
+            <iframe id="runner-frame" style="flex:1; background:#fff; border:none;"></iframe>
+            <div id="console-log-area" style="height:180px; background:#050505; border-top:1px solid var(--header-green); color:#ddd; font-family:monospace; overflow-y:auto; padding:15px;"></div>
+        </div>
+    </div>
+</div>
+
+<!-- ================= SETTINGS BUTTON ================= -->
+<button id="settings-btn" title="Settings">
+    <svg viewBox="0 0 24 24"><path d="M19.14,12.94a7.49,7.49,0,0,0,.05-.94,7.49,7.49,0,0,0-.05-.94l2.11-1.65a.48.48,0,0,0,.12-.61l-2-3.46a.49.49,0,0,0-.6-.22l-2.49,1a7.28,7.28,0,0,0-1.63-.94l-.38-2.65A.49.49,0,0,0,13.81,2H10.19a.49.49,0,0,0-.48.41L9.33,5.06a7.28,7.28,0,0,0-1.63.94l-2.49-1a.49.49,0,0,0-.6.22l-2,3.46a.48.48,0,0,0,.12.61L4.86,11.06a7.49,7.49,0,0,0-.05.94,7.49,7.49,0,0,0,.05.94L2.75,14.59a.48.48,0,0,0-.12.61l2,3.46a.49.49,0,0,0,.6.22l2.49-1a7.28,7.28,0,0,0,1.63.94l.38,2.65a.49.49,0,0,0,.48.41h3.62a.49.49,0,0,0,.48-.41l.38-2.65a7.28,7.28,0,0,0,1.63-.94l2.49,1a.49.49,0,0,0,.6-.22l2-3.46a.48.48,0,0,0-.12-.61Zm-7.14,2.36A3.3,3.3,0,1,1,15.3,12,3.29,3.29,0,0,1,12,15.3Z"/></svg>
+</button>
+
+<!-- ================= SETTINGS MODAL ================= -->
+<div id="settings-modal" class="hacker-modal">
+    <div class="modal-win">
+        <div class="modal-head">
+            <div>SETTINGS</div>
+            <div class="runner-close-btn" onclick="closeSettings()">×</div>
+        </div>
+        <div class="modal-body">
+            <div class="settings-section">
+                <label>CORE MODEL</label>
+                <select id="settings-model-select">
+                        <option value="gpt-5.4-mini" title="The pinnacle of AI. Proprietary model by OpenAI. Unmatched reasoning, creativity, and multimodal intelligence.">💎 GPT 5.4 Mini (OpenAI Flex)</option>
+                        <option value="gpt-5.4-nano" title="The pinnacle of AI. Proprietary model by OpenAI. Unmatched reasoning, creativity, and multimodal intelligence.">💎 GPT 5.4 Nano (OpenAI Flex)</option>
+                        <option value="gpt-5-mini" title="Efficient version of GPT-5. Fast but retains high-level reasoning.">❄️ GPT 5 Mini (OpenAI Flex)</option>
+                        <option value="gpt-5-nano" title="Lightweight frontier model for instant responses with smart logic.">❄️ GPT 5 Nano (OpenAI Flex)</option>
+                        <option value="deepseek-v4-flash" title="The pinnacle of AI. Proprietary model by DeepSeek. Unmatched reasoning, creativity, and multimodal intelligence.">💎 DeepSeek V4 Flash (DeepSeek)</option>
+                        <option value="gpt-4.1-nano" title="Refined GPT-4 architecture in a small, fast package.">✨ GPT 4.1 Nano (OpenAI)</option>
+                        <option value="gpt-4o-mini" title="OpenAI's most cost-effective smart model. Great for general tasks.">✨ GPT 4o Mini (OpenAI)</option>
+                        <option value="gpt-5.4" title="The pinnacle of AI. Proprietary model by OpenAI. Unmatched reasoning, creativity, and multimodal intelligence.">💎 GPT 5.4 (OpenAI Flex)</option>
+                        <option value="gpt-5.2" title="The pinnacle of AI. Proprietary model by OpenAI. Unmatched reasoning, creativity, and multimodal intelligence.">💎 GPT 5.2 (OpenAI Flex)</option>
+                        <option value="gpt-5.1" title="High-tier OpenAI model. Very nice at technical writing and nuanced instruction following.">💎 GPT 5.1 (OpenAI Flex)</option>
+                        <option value="gpt-5" title="The base GPT-5 model. Extremely capable across all domains including complex science.">💎 GPT 5 (OpenAI Flex)</option>
+                        <option value="gpt-5.4-mini" title="The pinnacle of AI. Proprietary model by OpenAI. Unmatched reasoning, creativity, and multimodal intelligence.">💎 GPT 5.4 Mini (OpenAI Flex)</option>
+                        <option value="gpt-5.4-nano" title="The pinnacle of AI. Proprietary model by OpenAI. Unmatched reasoning, creativity, and multimodal intelligence.">💎 GPT 5.4 Nano (OpenAI Flex)</option>
+                        <option value="gpt-4.1" title="The pinnacle of AI. Proprietary model by OpenAI. Unmatched reasoning, creativity, and multimodal intelligence.">💎 GPT 4.1 (OpenAI Flex)</option>
+                        <option value="gpt-4o" title="The pinnacle of AI. Proprietary model by OpenAI. Unmatched reasoning, creativity, and multimodal intelligence.">💎 GPT 4o (OpenAI Flex)</option>
+                        <option value="o4-mini" title="Specialized reasoning model for high-efficiency logic tasks.">❄️ GPT o4 Mini (OpenAI Flex)</option>
+                </select>
+            </div>
+
+            <div class="settings-section">
+                <label>STYLE</label>
+                <select id="settings-style-select">
+                    <option value="terminal">Terminal (Green)</option>
+                    <option value="dark">Pure Dark (White/Gray)</option>
+                    <option value="gray">Steel Gray</option>
+                    <option value="white">Pristine White</option>
+                </select>
+            </div>
+
+            <div class="settings-section">
+                <label>FONT SIZE</label>
+                <select id="settings-font-select">
+                    <option value="14px">Small (14px)</option>
+                    <option value="16px">Normal (16px)</option>
+                    <option value="18px">Large (18px)</option>
+                    <option value="20px">Extra Large (20px)</option>
+                </select>
+            </div>
+
+            <div class="settings-section">
+                <button class="danger-btn" id="clear-all-history-btn">Erase All Conversations</button>
+            </div>
+        </div>
+        <div class="modal-foot">
+            <button class="modal-btn" onclick="closeSettings()">CLOSE</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    const params = new URLSearchParams(window.location.search); 
+    const authkey = params.get('authkey');
+    // --- Icons ---
+    const ICON_COPY = `<svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>`;
+    const ICON_CHECK = `<svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>`;
+    const ICON_EDIT = `<svg viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>`;
+    const ICON_DELETE = `<svg viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>`;
+    const ICON_SEND = `<svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>`;
+
+    // --- State & Styles ---
+    const stylesMap = {
+        terminal: { bg: '#050505', sidebar: '#000', term: '#00ff41', text: '#dddddd', border: '#333333', bubbleAi: 'rgba(127, 127, 127, 0.05)', bubbleUser: 'rgba(0, 255, 255, 0.05)', userCyan: '#0ff', editBg: '#111' },
+        dark:     { bg: '#050505', sidebar: '#0a0a0a', term: '#ffffff', text: '#ffffff', border: '#444444', bubbleAi: 'rgba(255, 255, 255, 0.1)', bubbleUser: 'rgba(255, 255, 255, 0.1)', userCyan: '#fff', editBg: '#1a1a1a' },
+        gray:     { bg: '#333333', sidebar: '#222', term: '#ffffff', text: '#ffffff', border: '#ffffff', bubbleAi: 'rgba(0,0,0,0.2)', bubbleUser: 'rgba(0,0,0,0.2)', userCyan: '#fff', editBg: '#222' },
+        white:    { bg: '#ffffff', sidebar: '#f5f5f5', term: '#0066ff', text: '#000000', border: '#cccccc', bubbleAi: '#f0f0f0', bubbleUser: '#eef2ff', userCyan: '#0044cc', editBg: '#f9f9f9' }
+    };
+    
+    let currentStyle = localStorage.getItem('chatStyle') || 'terminal';
+    let currentFontSize = localStorage.getItem('chatFontSize') || '16px';
+
+    /* ============================================================
+       MULTI CHAT SYSTEM
+    ============================================================ */
+
+    const CHAT_META_KEY = 'zchat:meta';
+    const CHAT_PREFIX = 'zchat:';
+
+    function randomHex(n) { return Math.floor(Math.random() * Math.pow(16, n)).toString(16).padStart(n, '0'); }
+    function genChatId() { return `${randomHex(5)}-${randomHex(5)}-${randomHex(5)}-${randomHex(5)}`; }
+    function loadMeta() { try { return JSON.parse(localStorage.getItem(CHAT_META_KEY)) || []; } catch { return []; } }
+    function saveMeta(meta) { localStorage.setItem(CHAT_META_KEY, JSON.stringify(meta)); }
+    function loadChatContent(id) { try { return JSON.parse(localStorage.getItem(CHAT_PREFIX + id)) || []; } catch { return []; } }
+    function saveChatContent(id, content) { localStorage.setItem(CHAT_PREFIX + id, JSON.stringify(content)); }
+    function deleteChat(id) { localStorage.removeItem(CHAT_PREFIX + id); let meta = loadMeta().filter(m => m.id !== id); saveMeta(meta); }
+    function getActiveChatId() { return localStorage.getItem('zchat:active'); }
+    function setActiveChatId(id) { localStorage.setItem('zchat:active', id); }
+    function touchChat(id) { let meta = loadMeta(); const m = meta.find(x => x.id === id); if (m) m.lastModified = Date.now(); saveMeta(meta); }
+
+    function createNewChat(title = 'New Chat') {
+        const id = genChatId();
+        const meta = loadMeta();
+        meta.push({ id, title, lastModified: Date.now() });
+        saveMeta(meta);
+        saveChatContent(id, []);
+        setActiveChatId(id);
+        return id;
+    }
+
+    function ensureInitialChat() {
+        let meta = loadMeta();
+        if (!meta.length) return createNewChat('New Chat');
+        const active = getActiveChatId();
+        if (!active || !meta.find(m => m.id === active)) {
+            setActiveChatId(meta.sort((a,b)=>b.lastModified-a.lastModified)[0].id);
+        }
+        return getActiveChatId();
+    }
+
+    let history = [];
+    let isGenerating = false, isStopped = false, abortController = null, currentRunnerData = { b64: '', lang: '' };
+
+    /* ============================================================
+       DOM REFS
+    ============================================================ */
+
+    const sidebar = document.getElementById('sidebar');
+    const sidebarToggle = document.getElementById('sidebar-toggle');
+    const chatListEl = document.getElementById('chat-list');
+    const newChatBtn = document.getElementById('new-chat-btn');
+    const chatBox = document.getElementById('chat-box');
+    const userInput = document.getElementById('user-input');
+    const sendBtn = document.getElementById('send-btn');
+    const settingsBtn = document.getElementById('settings-btn');
+    const settingsModal = document.getElementById('settings-modal');
+    const settingsModelSelect = document.getElementById('settings-model-select');
+    const settingsStyleSelect = document.getElementById('settings-style-select');
+    const settingsFontSelect = document.getElementById('settings-font-select');
+    const clearAllHistoryBtn = document.getElementById('clear-all-history-btn');
+
+    let currentModel = localStorage.getItem('zchat:model') || 'gpt-oss:120b';
+
+    /* ============================================================
+       STYLE SYSTEM
+    ============================================================ */
+
+    function applyStyle(name) {
+        const s = stylesMap[name];
+        if (!s) return;
+        currentStyle = name;
+        const root = document.documentElement;
+        root.style.setProperty('--bg', s.bg);
+        root.style.setProperty('--sidebar-bg', s.sidebar);
+        root.style.setProperty('--term-color', s.term);
+        root.style.setProperty('--text-main', s.text);
+        root.style.setProperty('--border-main', s.border);
+        root.style.setProperty('--bubble-ai-bg', s.bubbleAi);
+        root.style.setProperty('--bubble-user-bg', s.bubbleUser);
+        root.style.setProperty('--user-cyan', s.userCyan);
+        root.style.setProperty('--edit-bg', s.editBg);
+        
+        // Handle header specifically for white theme
+        if(name === 'white') {
+            root.style.setProperty('--header-bg', '#ffffff');
+            root.style.setProperty('--header-green', '#0066ff');
+        } else {
+            root.style.setProperty('--header-bg', '#000000');
+            root.style.setProperty('--header-green', '#00ff41');
+        }
+
+        localStorage.setItem('chatStyle', name);
+        if(chatBox.innerHTML !== "") loadHistory(false); 
+        renderChatList();
+    }
+
+    function applyFontSize(size) {
+        currentFontSize = size;
+        document.documentElement.style.setProperty('--base-font-size', size);
+        localStorage.setItem('chatFontSize', size);
+    }
+
+    /* ============================================================
+       HELPERS
+    ============================================================ */
+
+    const getB64 = (s) => btoa(unescape(encodeURIComponent(s)));
+    const fromB64 = (s) => decodeURIComponent(escape(atob(s)));
+    const formatSize = (s) => { const b = new Blob([s]).size; return b < 1024 ? b + " B" : (b/1024).toFixed(2) + " KB"; };
+
+    userInput.addEventListener('input', function() { this.style.height = 'auto'; this.style.height = (this.scrollHeight) + 'px'; });
+    userInput.addEventListener('keydown', e => { if(e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } });
+
+    /* ============================================================
+       MARKDOWN RENDERER
+    ============================================================ */
+
+    const renderer = new marked.Renderer();
+    renderer.code = function({ text, lang }) {
+        const validLang = (lang && hljs.getLanguage(lang)) ? lang : 'plaintext';
+        const highlighted = hljs.highlight(text, { language: validLang, ignoreIllegals: true }).value;
+        const b64 = getB64(text);
+        const runnable = ['javascript', 'js', 'html', 'htm'].includes(validLang.toLowerCase());
+        return `<div class="code-block">
+            <div class="code-header">
+                <div class="code-info"><strong style="color:var(--header-green)">${validLang.toUpperCase()}</strong><span>Length: ${text.length}</span></div>
+                <div class="code-actions" style="display:flex; gap:10px; align-items:center;">
+                    ${runnable ? `<button class="run-text-btn" onclick="openRunner('${b64}', '${validLang.toLowerCase()}')">RUN</button>` : ''}
+                    <button class="code-btn" onclick="copyCode('${b64}', this)">${ICON_COPY}</button>
+                </div>
+            </div>
+            <pre><code class="hljs language-${validLang}">${highlighted}</code></pre>
+        </div>`;
+    };
+    marked.setOptions({ renderer, breaks: true, gfm: true, mangle: false, headerIds: false });
+
+    /* ============================================================
+       CHAT RENDERING
+    ============================================================ */
+
+    function loadHistory(shouldScroll = true) {
+        const currentPos = chatBox.scrollTop;
+        chatBox.innerHTML = '';
+        history.forEach((msg, i) => addMessageToUI(msg, i));
+        if (shouldScroll) chatBox.scrollTop = chatBox.scrollHeight;
+        else chatBox.scrollTop = currentPos;
+    }
+
+    function addMessageToUI(msg, i) {
+        const container = document.createElement('div');
+        container.className = `msg-container ${msg.role === 'user' ? 'user' : 'ai'}`;
+        container.id = `msg-cnt-${i}`;
+        const bubble = document.createElement('div');
+        bubble.className = `msg msg-${msg.role === 'user' ? 'user' : 'ai'}`;
+        if (msg.role === 'user') bubble.textContent = msg.content;
+        else { bubble.innerHTML = marked.parse(msg.content); bubble.querySelectorAll('pre code').forEach(el => hljs.highlightElement(el)); }
+        
+        const actions = document.createElement('div');
+        actions.className = 'msg-actions';
+        actions.appendChild(createIconBtn(ICON_COPY, (btn) => { 
+            navigator.clipboard.writeText(msg.content);
+            const original = btn.innerHTML;
+            btn.innerHTML = ICON_CHECK;
+            setTimeout(() => btn.innerHTML = original, 1500);
+        }));
+        if (msg.role === 'user') actions.appendChild(createIconBtn(ICON_EDIT, () => enterEditMode(i)));
+        actions.appendChild(createIconBtn(ICON_DELETE, () => { confirmAction = () => { history.splice(i, 1); saveAndReload(); }; showPrompt("CONFIRM", "Purge this message?"); }, true));
+        
+        container.appendChild(bubble);
+        container.appendChild(actions);
+        chatBox.appendChild(container);
+    }
+
+    function createIconBtn(svg, onClick, isRed = false) {
+        const btn = document.createElement('button');
+        btn.className = `action-btn ${isRed ? 'btn-red' : ''}`;
+        btn.innerHTML = svg;
+        btn.onclick = () => onClick(btn);
+        return btn;
+    }
+
+    function enterEditMode(i) {
+        const bubble = document.querySelector(`#msg-cnt-${i} .msg`);
+        const original = history[i].content;
+        bubble.innerHTML = '';
+        const area = document.createElement('textarea');
+        area.className = 'edit-area'; area.value = original;
+        const row = document.createElement('div');
+        row.style.cssText = "display:flex; gap:10px; margin-top:10px; justify-content:flex-end;";
+        row.appendChild(createIconBtn(ICON_DELETE, () => loadHistory(false), true)); 
+        row.appendChild(createIconBtn(ICON_SEND, () => { const v = area.value.trim(); if(v) { history = history.slice(0, i); userInput.value = v; saveAndReload(); sendMessage(); } }));
+        bubble.appendChild(area); bubble.appendChild(row); area.focus();
+    }
+
+    function saveAndReload() {
+        const id = getActiveChatId();
+        saveChatContent(id, history);
+        touchChat(id);
+        saveMeta(loadMeta());
+        loadHistory();
+        renderChatList();
+    }
+
+    /* ============================================================
+       SEND MESSAGE & TITLE GENERATION
+    ============================================================ */
+
+    async function generateChatTitle(userMessage) {
+        const chatId = getActiveChatId();
+        try {
+            const res = await fetch('/api/models', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    model: 'gpt-5-nano', 
+                    messages: [{ role: 'user', content: `Please generate a very short, concise English title (maximum 3 words, recommand 2 words) for a chat session that starts with this message: "${userMessage}". Return ONLY the title text, nothing else.` }],
+                    authkey: authkey
+                })
+            });
+            const reader = res.body.getReader();
+            const decoder = new TextDecoder();
+            let title = "";
+            while (true) {
+                const { done, value } = await reader.read(); if (done) break;
+                title += decoder.decode(value, { stream: true });
+            }
+            title = title.replace(/["']/g, "").trim();
+            if (title) {
+                let meta = loadMeta();
+                const m = meta.find(x => x.id === chatId);
+                if (m) {
+                    m.title = title;
+                    saveMeta(meta);
+                    renderChatList();
+                }
+            }
+        } catch (e) { console.error("Title generation failed", e); }
+    }
+
+    async function sendMessage() {
+        const text = userInput.value.trim(); if (!text || isGenerating) return;
+        
+        // If first message, trigger title generation
+        const isFirstMessage = history.length === 0;
+        
+        isGenerating = true; isStopped = false; abortController = new AbortController();
+        userInput.value = ''; userInput.style.height = '52px'; userInput.disabled = true;
+        sendBtn.innerHTML = 'STOP'; sendBtn.classList.add('stop-mode');
+        history.push({ role: 'user', content: text }); loadHistory();
+
+        if (isFirstMessage) generateChatTitle(text);
+
+        const aiBubble = document.createElement('div');
+        aiBubble.className = 'msg msg-ai'; aiBubble.innerHTML = `<div class="loading-dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>`;
+        const aiCnt = document.createElement('div'); aiCnt.className = 'msg-container ai';
+        aiCnt.appendChild(aiBubble); chatBox.appendChild(aiCnt); chatBox.scrollTop = chatBox.scrollHeight;
+
+        let full = "";
+        try {
+            const res = await fetch('/api/models', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ model: currentModel, messages: history, authkey: authkey}),
+                signal: abortController.signal
+            });
+            const reader = res.body.getReader();
+            const decoder = new TextDecoder();
+            while (true) {
+                const { done, value } = await reader.read(); if (done) break;
+                const chunk = decoder.decode(value, { stream: true });
+                if (isStopped) break;
+                full += chunk; aiBubble.innerHTML = marked.parse(full);
+                aiBubble.querySelectorAll('pre code').forEach(el => hljs.highlightElement(el));
+                chatBox.scrollTop = chatBox.scrollHeight;
+            }
+        } catch (e) { if (e.name !== 'AbortError' && !isStopped) aiBubble.innerHTML = `<span style="color:var(--alert-red)">[ERROR] ${e.message}</span>`; }
+        finally {
+            const final = isStopped ? full + "\n\n[TERMINATED BY USER]" : full;
+            history.push({ role: 'assistant', content: final });
+            saveAndReload();
+            isGenerating = false; userInput.disabled = false; sendBtn.innerHTML = 'SEND'; sendBtn.classList.remove('stop-mode');
+        }
+    }
+
+    /* ============================================================
+       MODALS
+    ============================================================ */
+
+    let confirmAction = null;
+    function showPrompt(title, text) { document.getElementById('modal-title').innerText = title; document.getElementById('modal-body-text').innerText = text; document.getElementById('custom-modal').style.display = 'flex'; }
+    function closeAlert(confirm) { document.getElementById('custom-modal').style.display = 'none'; if(confirm && confirmAction) confirmAction(); confirmAction = null; }
+
+    window.openRunner = function(b64, lang) { currentRunnerData = { b64, lang }; document.getElementById('runner-modal').style.display = 'flex'; executeRunner(); };
+    function executeRunner() {
+        const { b64, lang } = currentRunnerData;
+        if(!b64) return;
+        const code = fromB64(b64);
+        const logArea = document.getElementById('console-log-area');
+        logArea.innerHTML = `<div style="color:#888">// Executing ${lang.toUpperCase()}...</div><hr style="border:0; border-top:1px dashed var(--header-green); margin:10px 0;">`;
+        const bridge = `<script>
+            const _l = (m, t='info') => window.parent.postMessage({ type: 'console', method: t, content: m }, '*');
+            console.log = (...a) => _l(a.map(x => typeof x==='object'?JSON.stringify(x):x).join(' '), 'info');
+            console.error = (...a) => _l(a.map(x => typeof x==='object'?JSON.stringify(x):x).join(' '), 'error');
+        <\/script>`;
+        const ifr = document.getElementById('runner-frame');
+        ifr.srcdoc = (lang === 'html' || lang === 'htm') ? bridge + code : bridge + `<body style="padding:20px; font-family:sans-serif;"><h3>Sandbox Result</h3><script>${code}<\/script></body>`;
+    }
+    document.getElementById('modal-rerun-btn').onclick = executeRunner;
+
+    window.addEventListener('message', (e) => {
+        if (e.data.type === 'console') {
+            const l = document.createElement('div'); if(e.data.method === 'error') l.style.color = 'var(--alert-red)';
+            l.textContent = `[${e.data.method.toUpperCase()}] ${e.data.content}`;
+            const logArea = document.getElementById('console-log-area'); logArea.appendChild(l); logArea.scrollTop = logArea.scrollHeight;
+        }
+    });
+
+    window.closeRunner = () => { document.getElementById('runner-modal').style.display = 'none'; document.getElementById('runner-frame').srcdoc = ''; };
+    window.copyCode = (b64, btn) => { navigator.clipboard.writeText(fromB64(b64)); btn.innerHTML = ICON_CHECK; setTimeout(()=> btn.innerHTML = ICON_COPY, 1500); };
+    window.handleButtonClick = () => { if(isGenerating) { isStopped = true; if(abortController) abortController.abort(); } else sendMessage(); };
+
+    /* ============================================================
+       SIDEBAR & SETTINGS LOGIC
+    ============================================================ */
+
+    function renderChatList() {
+        const meta = loadMeta().sort((a,b)=>b.lastModified-a.lastModified);
+        const activeId = getActiveChatId();
+        chatListEl.innerHTML = '';
+        meta.forEach(m => {
+            const item = document.createElement('div');
+            item.className = 'chat-item' + (m.id === activeId ? ' active' : '');
+            item.onclick = () => switchChat(m.id);
+            const title = document.createElement('div');
+            title.className = 'chat-title';
+            title.textContent = m.title || 'Untitled Chat';
+            const actions = document.createElement('div');
+            actions.className = 'chat-actions';
+            const editBtn = createIconBtn(ICON_EDIT, (e) => {
+                const newName = prompt('Rename chat', m.title || '');
+                if (newName !== null) { m.title = newName.trim() || 'Untitled Chat'; saveMeta(meta); renderChatList(); }
+            });
+            const delBtn = createIconBtn(ICON_DELETE, () => {
+                confirmAction = () => { deleteChat(m.id); const remaining = loadMeta(); if (!remaining.length) switchChat(createNewChat()); else if (getActiveChatId() === m.id) switchChat(remaining[0].id); else renderChatList(); };
+                showPrompt("DANGER", "Delete chat?");
+            }, true);
+            actions.appendChild(editBtn); actions.appendChild(delBtn);
+            item.appendChild(title); item.appendChild(actions); chatListEl.appendChild(item);
+        });
+    }
+
+    function switchChat(id) {
+        if (isGenerating) return;
+        setActiveChatId(id);
+        history = loadChatContent(id);
+        loadHistory();
+        renderChatList();
+        if (window.innerWidth <= 600) hideSidebar();
+    }
+
+    function openSettings() {
+        settingsModelSelect.value = currentModel;
+        settingsStyleSelect.value = currentStyle;
+        settingsFontSelect.value = currentFontSize;
+        settingsModal.style.display = 'flex';
+    }
+    function closeSettings() { settingsModal.style.display = 'none'; }
+    settingsBtn.onclick = openSettings;
+    settingsModelSelect.onchange = () => { currentModel = settingsModelSelect.value; localStorage.setItem('zchat:model', currentModel); };
+    settingsStyleSelect.onchange = () => { applyStyle(settingsStyleSelect.value); };
+    settingsFontSelect.onchange = () => { applyFontSize(settingsFontSelect.value); };
+
+    clearAllHistoryBtn.onclick = () => {
+        confirmAction = () => { const meta = loadMeta(); meta.forEach(m => localStorage.removeItem(CHAT_PREFIX + m.id)); localStorage.removeItem(CHAT_META_KEY); switchChat(createNewChat()); closeSettings(); };
+        showPrompt("DANGER", "Erase all history?");
+    };
+
+    function showSidebar() { sidebar.classList.remove('hidden'); document.getElementById('app').classList.remove('expanded'); }
+    function hideSidebar() { sidebar.classList.add('hidden'); document.getElementById('app').classList.add('expanded'); }
+    sidebarToggle.onclick = () => { sidebar.classList.contains('hidden') ? showSidebar() : hideSidebar(); };
+    newChatBtn.onclick = () => { if (isGenerating) return; switchChat(createNewChat()); if (window.innerWidth <= 600) hideSidebar(); };
+
+    window.onload = () => {
+        applyStyle(currentStyle);
+        applyFontSize(currentFontSize);
+        currentModel = localStorage.getItem('zchat:model') || currentModel;
+        const id = ensureInitialChat();
+        history = loadChatContent(id);
+        loadHistory();
+        renderChatList();
+        if (window.innerWidth > 600) showSidebar(); else hideSidebar();
+    };
+</script>
+</body>
+</html>
