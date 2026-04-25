@@ -7,6 +7,9 @@
     <h1>EtherKing</h1>
     <input id="key" placeholder="key here...">
     <button onclick="go()">Launch Console</button>
+    <hr>
+    <p>Didn't have any keys? Contact EtherKing's manager first:</p>
+    <a href="mailto:etherking@nxlab.zone.id">etherking@nxlab.zone.id</a>
     <script>
       function go () {
         window.location.href = `/console?authkey=${document.getElementById("key").value}`;
