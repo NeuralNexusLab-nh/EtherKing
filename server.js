@@ -209,7 +209,7 @@ app.post('/api/models', async (req, res) => {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
-                    "Authorization": `Bearer ${API_KEYS.OA}`
+                    "Authorization": `Bearer ${API_KEYS.DS}`
                 },
                 body: JSON.stringify({
                     model,
