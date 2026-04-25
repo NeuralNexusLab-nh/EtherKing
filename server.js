@@ -17,7 +17,7 @@ const SAVED_CHATS_FILE = path.join(SAVED_DIR, 'chats.json');
 
 const API_KEYS = {
     OA: process.env.OAAPI || "",
-    OLM: process.env.OLMAPI || ""
+    DS: process.env.DSAPI || ""
 };
 
 // --- MODEL REGISTRY ---
@@ -323,7 +323,7 @@ app.get(['/robots.txt','/Robots.txt','/robot.txt'], (req,res)=>{
 
 // --- FALLBACK ---
 app.all("*", (req, res) => {
-    return res.redirect("https://etherking.zone.id/");
+    return res.redirect("/");
 });
 
 // --- START ---
