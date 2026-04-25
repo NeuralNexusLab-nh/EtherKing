@@ -205,7 +205,7 @@ app.post('/api/models', async (req, res) => {
 
         if (config.provider === "DeepSeek") {
 
-            apiRes = await fetch("https://https://api.deepseek.com/chat/completions", {
+            apiRes = await fetch("https://api.deepseek.com/chat/completions", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
