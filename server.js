@@ -264,29 +264,16 @@ app.post('/api/models', async (req, res) => {
                 try {
 
                     let text = "";
+                    if (trimmed.startsWith('data: ')) {
 
-                    if (config.provider === "Ollama") {
+                        const dataStr = trimmed.replace('data: ', '');
 
-                        const json = JSON.parse(trimmed);
+                        if (dataStr !== '[DONE]') {
 
-                        if (json.message?.content) {
-                            text = json.message.content;
+                            const json = JSON.parse(dataStr);
+                            text = json.choices[0]?.delta?.content || "";
+
                         }
-
-                    } else {
-
-                        if (trimmed.startsWith('data: ')) {
-
-                            const dataStr = trimmed.replace('data: ', '');
-
-                            if (dataStr !== '[DONE]') {
-
-                                const json = JSON.parse(dataStr);
-                                text = json.choices[0]?.delta?.content || "";
-
-                            }
-                        }
-
                     }
 
                     if (text) res.write(text);
