@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>EtherKing</title>
+  </head>
+  <body>
+    <h1>EtherKing</h1>
+    <input id="key" placeholder="key here...">
+    <button onclick="go()">Launch Console</button>
+    <script>
+      function go () {
+        window.location.href = `/console?authkey=${document.getElementById("key").value}`;
+      }
+    </script>
+  </body>
+</html>
