@@ -166,7 +166,8 @@ app.get('/console', (req, res) => {
   if (process.env.keys.includes(req.query.authkey) && req.query.authkey.length > 5.5) {
     return res.sendFile(path.join(__dirname, 'public', 'console.html'));
   } else {
-    return res.send("ERROR 403");
+    res.status(403).send("ERROR 403");
+    return;
   }
 });
 
@@ -299,7 +300,8 @@ app.post('/api/models', async (req, res) => {
 
     }
   } else {
-    return res.send("ERROR 403");
+    res.status(403).send("ERROR 403");
+    return;
   }
 });
 
