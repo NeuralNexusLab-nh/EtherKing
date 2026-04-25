@@ -163,7 +163,7 @@ app.get('/', (req, res) => {
 });
 
 app.get('/console', (req, res) => {
-  if (process.env.keys.includes(req.query.authkey) && req.query.authkey.length > 4.5) {
+  if (process.env.keys.includes(req.query.authkey) && req.query.authkey.length > 5.5) {
     return res.sendFile(path.join(__dirname, 'public', 'console.html'));
   } else {
     return res.send("ERROR 403");
@@ -172,7 +172,7 @@ app.get('/console', (req, res) => {
 
 // --- MAIN API ---
 app.post('/api/models', async (req, res) => {
-  if (process.env.keys.includes(req.body.authkey) && req.body.authkey.length > 4.5) {
+  if (process.env.keys.includes(req.body.authkey) && req.body.authkey.length > 5.5) {
 
     try {
 
