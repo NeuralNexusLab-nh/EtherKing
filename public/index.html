@@ -1,19 +1,384 @@
 <!DOCTYPE html>
-<html>
-  <head>
-    <title>EtherKing</title>
-  </head>
-  <body>
-    <h1>EtherKing</h1>
-    <input id="key" placeholder="key here...">
-    <button onclick="go()">Launch Console</button>
-    <hr>
-    <p>Didn't have any keys? Contact EtherKing's manager first:</p>
-    <a href="mailto:etherking@nxlab.zone.id">etherking@nxlab.zone.id</a>
-    <script>
-      function go () {
-        window.location.href = `/console?authkey=${document.getElementById("key").value}`;
-      }
-    </script>
-  </body>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ETHERKING // TERMINAL</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      background: radial-gradient(circle at 20% 20%, #0b0f1c, #03050a);
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-family: 'Courier New', Courier, 'Lucida Sans Typewriter', monospace;
+    }
+
+    /* main panel — glass + neon border */
+    .terminal {
+      background: rgba(8, 12, 20, 0.75);
+      backdrop-filter: blur(6px) saturate(180%);
+      -webkit-backdrop-filter: blur(6px) saturate(180%);
+      border: 2px solid #00f7ff;
+      box-shadow: 0 0 30px rgba(0, 247, 255, 0.3), inset 0 0 30px rgba(0, 255, 200, 0.05);
+      padding: 2.8rem 2.8rem 3.2rem;
+      max-width: 700px;
+      width: 90%;
+      border-radius: 36px 12px 36px 12px;
+      transition: box-shadow 0.3s ease;
+      position: relative;
+      animation: terminalPulse 6s infinite alternate;
+    }
+
+    @keyframes terminalPulse {
+      0% { border-color: #00f7ff; box-shadow: 0 0 18px #00f7ff, inset 0 0 20px rgba(0, 255, 255, 0.1); }
+      50% { border-color: #b200ff; box-shadow: 0 0 40px #b200ff, inset 0 0 30px rgba(178, 0, 255, 0.2); }
+      100% { border-color: #00ff88; box-shadow: 0 0 25px #00ff88, inset 0 0 20px rgba(0, 255, 136, 0.15); }
+    }
+
+    /* title — glitch + flicker */
+    h1 {
+      font-size: 4rem;
+      letter-spacing: 8px;
+      text-transform: uppercase;
+      font-weight: 700;
+      color: #00f7ff;
+      text-shadow: 0 0 10px #00f7ff, 0 0 25px #00a2ff, 0 0 50px #0066ff;
+      margin-bottom: 0.4rem;
+      text-align: center;
+      word-break: break-word;
+      animation: glitchText 3s infinite step-start, flicker 10s infinite;
+    }
+
+    @keyframes glitchText {
+      0% { transform: skew(0deg, 0deg); opacity: 1; text-shadow: 0 0 10px cyan, 0 0 30px blue; }
+      5% { transform: skew(3deg, -2deg); text-shadow: 3px 0 red, -3px 0 blue; }
+      10% { transform: skew(-2deg, 1deg); text-shadow: -2px 0 lime, 2px 0 magenta; }
+      15% { transform: skew(0deg, 0deg); text-shadow: 0 0 10px cyan, 0 0 40px #0088ff; }
+      100% { transform: skew(0deg, 0deg); text-shadow: 0 0 10px cyan, 0 0 30px blue; }
+    }
+
+    @keyframes flicker {
+      0%, 19%, 21%, 23%, 25%, 54%, 56%, 100% { opacity: 1; }
+      20% { opacity: 0.5; }
+      22% { opacity: 0.3; }
+      24% { opacity: 0.7; }
+      55% { opacity: 0.4; }
+    }
+
+    /* subhead / label */
+    .subhead {
+      color: #a0ffe0;
+      font-size: 0.8rem;
+      letter-spacing: 6px;
+      text-align: center;
+      border-bottom: 1px dashed #00ffb3;
+      padding-bottom: 1rem;
+      margin-bottom: 2.2rem;
+      text-transform: uppercase;
+      opacity: 0.8;
+      animation: subFlicker 4s infinite;
+    }
+
+    @keyframes subFlicker {
+      0%, 100% { opacity: 0.8; }
+      33% { opacity: 0.3; }
+      66% { opacity: 0.9; }
+    }
+
+    /* input area — hacker style */
+    .input-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 15px;
+      align-items: center;
+      justify-content: center;
+      margin: 2rem 0 1.8rem;
+    }
+
+    #key {
+      flex: 2;
+      min-width: 200px;
+      background: #03080f;
+      border: 2px solid #00ee9f;
+      border-radius: 40px;
+      padding: 1rem 1.8rem;
+      font-family: 'Courier New', monospace;
+      font-size: 1.2rem;
+      font-weight: bold;
+      letter-spacing: 2px;
+      color: #00ffc3;
+      text-shadow: 0 0 8px #00ffb3;
+      caret-color: #ff00aa;
+      outline: none;
+      box-shadow: 0 0 15px rgba(0, 255, 200, 0.2), inset 0 0 20px rgba(0, 255, 200, 0.05);
+      transition: all 0.25s ease;
+    }
+
+    #key::placeholder {
+      color: #3e6b6b;
+      font-weight: normal;
+      letter-spacing: 4px;
+      text-shadow: none;
+      opacity: 0.7;
+    }
+
+    #key:focus {
+      border-color: #ff44ee;
+      box-shadow: 0 0 30px #ff44ee, inset 0 0 25px rgba(255, 68, 238, 0.2);
+      background: #050c18;
+      transform: scale(1.02);
+    }
+
+    /* console launch button */
+    button {
+      background: transparent;
+      border: 2px solid #00f0ff;
+      color: #00f0ff;
+      padding: 0.9rem 2.2rem;
+      border-radius: 60px;
+      font-family: 'Courier New', monospace;
+      font-weight: bold;
+      font-size: 1.3rem;
+      letter-spacing: 4px;
+      text-transform: uppercase;
+      cursor: pointer;
+      box-shadow: 0 0 15px rgba(0, 240, 255, 0.3);
+      transition: all 0.25s ease;
+      background: rgba(0, 255, 255, 0.04);
+      backdrop-filter: blur(2px);
+      position: relative;
+      overflow: hidden;
+      animation: btnNeon 2s infinite alternate;
+    }
+
+    button::before {
+      content: '▶';
+      margin-right: 8px;
+      display: inline-block;
+      animation: blinkArrow 1.1s infinite;
+    }
+
+    @keyframes blinkArrow {
+      0%, 100% { opacity: 1; text-shadow: 0 0 10px cyan; }
+      50% { opacity: 0.2; text-shadow: none; }
+    }
+
+    @keyframes btnNeon {
+      0% { border-color: #00f0ff; color: #00f0ff; box-shadow: 0 0 10px #00f0ff, inset 0 0 10px rgba(0, 240, 255, 0.2); }
+      100% { border-color: #ff00c8; color: #ff00c8; box-shadow: 0 0 35px #ff00c8, inset 0 0 30px rgba(255, 0, 200, 0.3); }
+    }
+
+    button:hover {
+      transform: scale(1.07) skewX(-2deg);
+      background: rgba(255, 0, 200, 0.15);
+      border-color: #ff44ee;
+      color: #ffc0ff;
+      box-shadow: 0 0 60px #ff00aa;
+    }
+
+    button:active {
+      transform: scale(0.95);
+    }
+
+    /* divider — digital style */
+    hr {
+      border: none;
+      height: 3px;
+      background: linear-gradient(90deg, #00ffc3, #b200ff, #ff0077, #00f0ff);
+      background-size: 300% 100%;
+      animation: hrScan 6s linear infinite;
+      margin: 2.5rem 0 1.8rem;
+      border-radius: 10px;
+      opacity: 0.7;
+      box-shadow: 0 0 25px #00ffc3;
+    }
+
+    @keyframes hrScan {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+
+    /* contact section */
+    .contact {
+      text-align: center;
+      color: #7ee0d0;
+      font-size: 1rem;
+      letter-spacing: 2px;
+      line-height: 1.7;
+      font-weight: 300;
+      margin-top: 10px;
+      text-shadow: 0 0 5px #00ffe0;
+    }
+
+    .contact a {
+      color: #ffb0ff;
+      text-decoration: none;
+      border-bottom: 2px dotted #ff00aa;
+      padding: 0 6px;
+      transition: 0.2s;
+      font-weight: 600;
+      position: relative;
+      display: inline-block;
+      animation: linkGlitch 5s infinite;
+    }
+
+    .contact a:hover {
+      color: #00ffff;
+      border-bottom: 2px solid #00ffff;
+      text-shadow: 0 0 20px cyan, 0 0 40px blue;
+      transform: scale(1.03);
+    }
+
+    @keyframes linkGlitch {
+      0%, 90%, 100% { transform: none; opacity: 1; }
+      3% { transform: translate(2px, -1px) skewX(-1deg); opacity: 0.9; }
+      6% { transform: translate(-2px, 1px) skewX(1deg); opacity: 0.8; }
+      9% { transform: none; }
+    }
+
+    /* dynamic scanlines overlay */
+    .scanlines {
+      pointer-events: none;
+      position: fixed;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background: repeating-linear-gradient(
+        0deg,
+        rgba(0, 255, 255, 0.02) 0px,
+        rgba(0, 0, 0, 0.1) 2px,
+        transparent 3px,
+        transparent 6px
+      );
+      z-index: 999;
+      mix-blend-mode: overlay;
+    }
+
+    /* matrix rain background */
+    .matrix-rain {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: -1;
+      overflow: hidden;
+    }
+
+    .matrix-rain span {
+      display: block;
+      position: absolute;
+      top: -20%;
+      color: #00ffb3;
+      font-size: 18px;
+      font-family: 'Courier New', monospace;
+      writing-mode: vertical-lr;
+      text-orientation: upright;
+      letter-spacing: -8px;
+      opacity: 0.2;
+      text-shadow: 0 0 20px #00ffc3;
+      animation: rainDrop 8s linear infinite;
+      user-select: none;
+      white-space: nowrap;
+    }
+
+    .matrix-rain span:nth-child(1) { left: 5%; animation-duration: 7s; animation-delay: -2s; font-size: 22px; opacity: 0.25; }
+    .matrix-rain span:nth-child(2) { left: 15%; animation-duration: 11s; animation-delay: -5s; font-size: 14px; opacity: 0.15; }
+    .matrix-rain span:nth-child(3) { left: 25%; animation-duration: 9s; animation-delay: -1s; font-size: 26px; opacity: 0.3; }
+    .matrix-rain span:nth-child(4) { left: 40%; animation-duration: 13s; animation-delay: -7s; font-size: 18px; opacity: 0.2; }
+    .matrix-rain span:nth-child(5) { left: 55%; animation-duration: 8s; animation-delay: -3s; font-size: 20px; opacity: 0.25; }
+    .matrix-rain span:nth-child(6) { left: 70%; animation-duration: 10s; animation-delay: -9s; font-size: 16px; opacity: 0.2; }
+    .matrix-rain span:nth-child(7) { left: 85%; animation-duration: 12s; animation-delay: -4s; font-size: 24px; opacity: 0.3; }
+    .matrix-rain span:nth-child(8) { left: 93%; animation-duration: 6s; animation-delay: -6s; font-size: 15px; opacity: 0.2; }
+
+    @keyframes rainDrop {
+      0% { transform: translateY(-20vh) rotate(0deg); opacity: 0; }
+      10% { opacity: 0.3; }
+      90% { opacity: 0.2; }
+      100% { transform: translateY(120vh) rotate(360deg); opacity: 0; }
+    }
+
+    /* small print */
+    .tiny-glitch {
+      display: block;
+      margin-top: 1.2rem;
+      font-size: 0.7rem;
+      color: #669999;
+      text-align: center;
+      letter-spacing: 6px;
+      animation: subFlicker 6s infinite reverse;
+    }
+
+    /* responsive */
+    @media (max-width: 550px) {
+      .terminal { padding: 2rem 1.5rem; }
+      h1 { font-size: 2.8rem; letter-spacing: 5px; }
+      #key { font-size: 1rem; padding: 0.8rem 1.2rem; min-width: 140px; }
+      button { font-size: 1rem; padding: 0.7rem 1.5rem; }
+    }
+  </style>
+</head>
+<body>
+  <!-- scanlines overlay -->
+  <div class="scanlines"></div>
+
+  <!-- matrix rain -->
+  <div class="matrix-rain">
+    <span>011010101101</span>
+    <span>110101001011</span>
+    <span>100101110100</span>
+    <span>011011101101</span>
+    <span>101010110010</span>
+    <span>110101101011</span>
+    <span>011010011110</span>
+    <span>101101001010</span>
+  </div>
+
+  <!-- main card -->
+  <main class="terminal">
+    <h1>ETHERKING</h1>
+    <div class="subhead">// ACCESS TERMINAL //</div>
+
+    <div class="input-group">
+      <input type="text" id="key" placeholder="✧ AUTH KEY ✧" autocomplete="off" />
+      <button onclick="go()">LAUNCH</button>
+    </div>
+
+    <hr />
+
+    <div class="contact">
+      ⚡ NO KEY? CONTACT ETHERKING'S MANAGER FIRST ⚡<br />
+      <a href="mailto:etherking@nxlab.zone.id">etherking@nxlab.zone.id</a>
+      <span class="tiny-glitch">[ SECURE ENCRYPTED CHANNEL ]</span>
+    </div>
+  </main>
+
+  <script>
+    function go() {
+      const keyInput = document.getElementById('key');
+      const keyValue = keyInput.value.trim() || 'unauthorized';
+      // redirect with auth key
+      window.location.href = `/console?authkey=${encodeURIComponent(keyValue)}`;
+    }
+
+    // press Enter to trigger launch
+    document.addEventListener('DOMContentLoaded', () => {
+      const keyField = document.getElementById('key');
+      keyField.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          go();
+        }
+      });
+      keyField.focus();
+    });
+  </script>
+</body>
 </html>
