@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>403 FORBIDDEN // ETHERKING</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      background: radial-gradient(circle at 20% 20%, #0b0f1c, #03050a);
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-family: 'Courier New', Courier, 'Lucida Sans Typewriter', monospace;
+    }
+
+    /* main panel — glass + neon border */
+    .terminal {
+      background: rgba(8, 12, 20, 0.75);
+      backdrop-filter: blur(6px) saturate(180%);
+      -webkit-backdrop-filter: blur(6px) saturate(180%);
+      border: 2px solid #ff2244;
+      box-shadow: 0 0 30px rgba(255, 34, 68, 0.3), inset 0 0 30px rgba(255, 0, 50, 0.05);
+      padding: 2.8rem 2.8rem 3.2rem;
+      max-width: 700px;
+      width: 90%;
+      border-radius: 36px 12px 36px 12px;
+      transition: box-shadow 0.3s ease;
+      position: relative;
+      animation: terminalPulse 6s infinite alternate;
+    }
+
+    @keyframes terminalPulse {
+      0% { border-color: #ff2244; box-shadow: 0 0 18px #ff2244, inset 0 0 20px rgba(255, 0, 50, 0.1); }
+      50% { border-color: #ff8800; box-shadow: 0 0 40px #ff8800, inset 0 0 30px rgba(255, 136, 0, 0.2); }
+      100% { border-color: #ff00aa; box-shadow: 0 0 25px #ff00aa, inset 0 0 20px rgba(255, 0, 170, 0.15); }
+    }
+
+    /* error code — glitch + flicker */
+    .error-code {
+      font-size: 6rem;
+      letter-spacing: 12px;
+      font-weight: 900;
+      color: #ff2244;
+      text-shadow: 0 0 10px #ff2244, 0 0 25px #ff0044, 0 0 50px #aa0022;
+      margin-bottom: 0.2rem;
+      text-align: center;
+      line-height: 1.1;
+      animation: glitchText 3s infinite step-start, flicker 10s infinite;
+    }
+
+    @keyframes glitchText {
+      0% { transform: skew(0deg, 0deg); opacity: 1; text-shadow: 0 0 10px red, 0 0 30px darkred; }
+      5% { transform: skew(3deg, -2deg); text-shadow: 3px 0 red, -3px 0 blue; }
+      10% { transform: skew(-2deg, 1deg); text-shadow: -2px 0 lime, 2px 0 magenta; }
+      15% { transform: skew(0deg, 0deg); text-shadow: 0 0 10px red, 0 0 40px #ff0044; }
+      100% { transform: skew(0deg, 0deg); text-shadow: 0 0 10px red, 0 0 30px darkred; }
+    }
+
+    @keyframes flicker {
+      0%, 19%, 21%, 23%, 25%, 54%, 56%, 100% { opacity: 1; }
+      20% { opacity: 0.5; }
+      22% { opacity: 0.3; }
+      24% { opacity: 0.7; }
+      55% { opacity: 0.4; }
+    }
+
+    /* status line */
+    .status {
+      color: #ff8866;
+      font-size: 1.2rem;
+      letter-spacing: 6px;
+      text-align: center;
+      border-bottom: 1px dashed #ff6644;
+      padding-bottom: 0.8rem;
+      margin-bottom: 1.8rem;
+      text-transform: uppercase;
+      opacity: 0.9;
+      animation: subFlicker 4s infinite;
+    }
+
+    @keyframes subFlicker {
+      0%, 100% { opacity: 0.9; }
+      33% { opacity: 0.3; }
+      66% { opacity: 0.7; }
+    }
+
+    /* main message */
+    .message {
+      text-align: center;
+      color: #ffccbb;
+      font-size: 1.4rem;
+      letter-spacing: 2px;
+      line-height: 1.6;
+      padding: 0.5rem 0 1rem;
+      text-shadow: 0 0 8px #ff4422;
+    }
+
+    .message .highlight {
+      display: inline-block;
+      color: #ff00aa;
+      border: 1px solid #ff00aa;
+      padding: 0.1rem 0.8rem;
+      border-radius: 20px;
+      font-weight: bold;
+      background: rgba(255, 0, 170, 0.1);
+      box-shadow: 0 0 20px rgba(255, 0, 170, 0.2);
+      animation: highlightPulse 2s infinite alternate;
+    }
+
+    @keyframes highlightPulse {
+      0% { box-shadow: 0 0 10px rgba(255, 0, 170, 0.1); }
+      100% { box-shadow: 0 0 30px rgba(255, 0, 170, 0.5); }
+    }
+
+    /* admin contact */
+    .contact {
+      text-align: center;
+      color: #7ee0d0;
+      font-size: 1rem;
+      letter-spacing: 2px;
+      line-height: 1.7;
+      font-weight: 300;
+      margin-top: 1.5rem;
+      text-shadow: 0 0 5px #00ffe0;
+    }
+
+    .contact a {
+      color: #ffb0ff;
+      text-decoration: none;
+      border-bottom: 2px dotted #ff00aa;
+      padding: 0 6px;
+      transition: 0.2s;
+      font-weight: 600;
+      position: relative;
+      display: inline-block;
+      animation: linkGlitch 5s infinite;
+    }
+
+    .contact a:hover {
+      color: #00ffff;
+      border-bottom: 2px solid #00ffff;
+      text-shadow: 0 0 20px cyan, 0 0 40px blue;
+      transform: scale(1.03);
+    }
+
+    @keyframes linkGlitch {
+      0%, 90%, 100% { transform: none; opacity: 1; }
+      3% { transform: translate(2px, -1px) skewX(-1deg); opacity: 0.9; }
+      6% { transform: translate(-2px, 1px) skewX(1deg); opacity: 0.8; }
+      9% { transform: none; }
+    }
+
+    /* divider */
+    hr {
+      border: none;
+      height: 3px;
+      background: linear-gradient(90deg, #ff2244, #ff8800, #ff00aa, #ff2244);
+      background-size: 300% 100%;
+      animation: hrScan 6s linear infinite;
+      margin: 2rem 0 1.5rem;
+      border-radius: 10px;
+      opacity: 0.7;
+      box-shadow: 0 0 25px #ff2244;
+    }
+
+    @keyframes hrScan {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+
+    /* back link */
+    .back-link {
+      text-align: center;
+      margin-top: 1.8rem;
+    }
+
+    .back-link a {
+      color: #88ddcc;
+      text-decoration: none;
+      border: 1px solid #88ddcc;
+      padding: 0.5rem 1.8rem;
+      border-radius: 40px;
+      font-size: 0.9rem;
+      letter-spacing: 4px;
+      transition: all 0.25s;
+      display: inline-block;
+      background: rgba(0, 255, 200, 0.05);
+      box-shadow: 0 0 15px rgba(0, 255, 200, 0.1);
+    }
+
+    .back-link a:hover {
+      border-color: #00ffff;
+      color: #00ffff;
+      background: rgba(0, 255, 255, 0.1);
+      box-shadow: 0 0 30px cyan;
+      transform: scale(1.05);
+    }
+
+    /* scanlines overlay */
+    .scanlines {
+      pointer-events: none;
+      position: fixed;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background: repeating-linear-gradient(
+        0deg,
+        rgba(255, 0, 50, 0.02) 0px,
+        rgba(0, 0, 0, 0.1) 2px,
+        transparent 3px,
+        transparent 6px
+      );
+      z-index: 999;
+      mix-blend-mode: overlay;
+    }
+
+    /* matrix rain background */
+    .matrix-rain {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: -1;
+      overflow: hidden;
+    }
+
+    .matrix-rain span {
+      display: block;
+      position: absolute;
+      top: -20%;
+      color: #ff4466;
+      font-size: 18px;
+      font-family: 'Courier New', monospace;
+      writing-mode: vertical-lr;
+      text-orientation: upright;
+      letter-spacing: -8px;
+      opacity: 0.15;
+      text-shadow: 0 0 20px #ff2244;
+      animation: rainDrop 8s linear infinite;
+      user-select: none;
+      white-space: nowrap;
+    }
+
+    .matrix-rain span:nth-child(1) { left: 5%; animation-duration: 7s; animation-delay: -2s; font-size: 22px; opacity: 0.2; }
+    .matrix-rain span:nth-child(2) { left: 15%; animation-duration: 11s; animation-delay: -5s; font-size: 14px; opacity: 0.12; }
+    .matrix-rain span:nth-child(3) { left: 25%; animation-duration: 9s; animation-delay: -1s; font-size: 26px; opacity: 0.25; }
+    .matrix-rain span:nth-child(4) { left: 40%; animation-duration: 13s; animation-delay: -7s; font-size: 18px; opacity: 0.15; }
+    .matrix-rain span:nth-child(5) { left: 55%; animation-duration: 8s; animation-delay: -3s; font-size: 20px; opacity: 0.2; }
+    .matrix-rain span:nth-child(6) { left: 70%; animation-duration: 10s; animation-delay: -9s; font-size: 16px; opacity: 0.15; }
+    .matrix-rain span:nth-child(7) { left: 85%; animation-duration: 12s; animation-delay: -4s; font-size: 24px; opacity: 0.25; }
+    .matrix-rain span:nth-child(8) { left: 93%; animation-duration: 6s; animation-delay: -6s; font-size: 15px; opacity: 0.15; }
+
+    @keyframes rainDrop {
+      0% { transform: translateY(-20vh) rotate(0deg); opacity: 0; }
+      10% { opacity: 0.3; }
+      90% { opacity: 0.15; }
+      100% { transform: translateY(120vh) rotate(360deg); opacity: 0; }
+    }
+
+    /* small print */
+    .tiny-glitch {
+      display: block;
+      margin-top: 1.5rem;
+      font-size: 0.7rem;
+      color: #664444;
+      text-align: center;
+      letter-spacing: 6px;
+      animation: subFlicker 6s infinite reverse;
+    }
+
+    /* responsive */
+    @media (max-width: 550px) {
+      .terminal { padding: 2rem 1.5rem; }
+      .error-code { font-size: 4rem; letter-spacing: 8px; }
+      .message { font-size: 1.1rem; }
+      .back-link a { font-size: 0.8rem; padding: 0.4rem 1.2rem; }
+    }
+  </style>
+</head>
+<body>
+  <!-- scanlines overlay -->
+  <div class="scanlines"></div>
+
+  <!-- matrix rain (red tint) -->
+  <div class="matrix-rain">
+    <span>011010101101</span>
+    <span>110101001011</span>
+    <span>100101110100</span>
+    <span>011011101101</span>
+    <span>101010110010</span>
+    <span>110101101011</span>
+    <span>011010011110</span>
+    <span>101101001010</span>
+  </div>
+
+  <!-- main card -->
+  <main class="terminal">
+    <div class="error-code">403</div>
+    <div class="status">// FORBIDDEN //</div>
+
+    <div class="message">
+      ⚡ YOU DO NOT HAVE PERMISSION TO ACCESS THIS PAGE ⚡<br />
+      <span class="highlight">ACCESS DENIED</span>
+    </div>
+
+    <hr />
+
+    <div class="contact">
+      PLEASE CONTACT THE ADMINISTRATOR<br />
+      <a href="mailto:etherking@nxlab.zone.id">etherking@nxlab.zone.id</a>
+    </div>
+
+    <div class="back-link">
+      <a href="/">◀ RETURN TO TERMINAL</a>
+    </div>
+
+    <span class="tiny-glitch">[ UNAUTHORIZED ACCESS LOGGED ]</span>
+  </main>
+
+  <script>
+    // optional: add some console noise
+    console.log('%c 403 FORBIDDEN ', 'background: #ff2244; color: black; font-size: 2rem; font-weight: bold; padding: 0.5rem;');
+    console.log('%c ACCESS LOGGED — CONTACT ADMIN ', 'background: #0a0a0a; color: #ff6644; font-size: 1rem; padding: 0.3rem;');
+  </script>
+</body>
+</html>
