@@ -93,11 +93,11 @@ app.use((req, res, next) => {
 const getModelGroup = (model) => {
 
     if (['gpt-5', 'gpt-5.1', 'gpt-5.2', 'gpt-5.4', 'gpt-4.1', 'gpt-4o'].includes(model)) {
-        return { group: 'D', limit: 45 };
+        return { group: 'D', limit: 35 };
     }
 
     if (model === 'deepseek-v4-flash') {
-        return { group: 'C', limit: 80 };
+        return { group: 'C', limit: 40 };
     }
 
     if ([
@@ -108,10 +108,10 @@ const getModelGroup = (model) => {
         'gpt-5.4-nano',
         'gpt-5.4-mini'
     ].includes(model)) {
-        return { group: 'B', limit: 150 };
+        return { group: 'B', limit: 200 };
     }
 
-    return { group: 'A', limit: 80 };
+    return { group: 'A', limit: 50 };
 };
 
 // --- DAILY LIMIT STORAGE ---
@@ -167,7 +167,7 @@ app.get('/console', (req, res) => {
   if (process.env.keys.split(',').includes(req.query.authkey) && req.query.authkey.length > 5.5) {
     return res.sendFile(path.join(__dirname, 'public', 'console.html'));
   } else {
-    res.status(403).send("ERROR 403");
+    res.sendFile(path.join(__dirname, 'public', 'error403.html'));
     return;
   }
 });
@@ -301,7 +301,7 @@ app.post('/api/models', async (req, res) => {
 
     }
   } else {
-    res.status(403).send("ERROR 403");
+    res.sendFile(path.join(__dirname, 'public', 'error403.html'));
     return;
   }
 });
