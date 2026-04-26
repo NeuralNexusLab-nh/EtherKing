@@ -63,6 +63,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use((req, res, next) => {
     try {
         console.log(
+            "IP:", req.ip,
             "PATH:", req.path,
             "UA:", req.headers["user-agent"],
             "BODY:", JSON.stringify(req.body || {})
@@ -163,7 +164,7 @@ app.get('/', (req, res) => {
 });
 
 app.get('/console', (req, res) => {
-  if (process.env.keys.includes(req.query.authkey) && req.query.authkey.length > 5.5) {
+  if (process.env.keys.split(',').includes(req.query.authkey) && req.query.authkey.length > 5.5) {
     return res.sendFile(path.join(__dirname, 'public', 'console.html'));
   } else {
     res.status(403).send("ERROR 403");
@@ -173,7 +174,7 @@ app.get('/console', (req, res) => {
 
 // --- MAIN API ---
 app.post('/api/models', async (req, res) => {
-  if (process.env.keys.includes(req.body.authkey) && req.body.authkey.length > 5.5) {
+  if (process.env.keys.split(',').includes(req.body.authkey) && req.body.authkey.length > 5.5) {
 
     try {
 
