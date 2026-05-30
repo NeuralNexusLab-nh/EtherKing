@@ -24,6 +24,7 @@ const API_KEYS = {
 const MODEL_REGISTRY = {
     // DeepSeek
     'deepseek-v4-flash': { provider: 'DeepSeek' },
+    'deepseek-v4-pro': { provider: 'DeepSeek' },
     // OpenAI
     'gpt-4o': { provider: 'OpenAI'},
     'gpt-4.1': { provider: 'OpenAI'},
