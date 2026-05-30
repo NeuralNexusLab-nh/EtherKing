@@ -93,8 +93,8 @@ app.use((req, res, next) => {
 // --- RATE LIMIT GROUP ---
 const getModelGroup = (model) => {
 
-    if (['gpt-5', 'gpt-5.1', 'gpt-5.2', 'gpt-5.4', 'gpt-4.1', 'gpt-4o'].includes(model)) {
-        return { group: 'D', limit: 35 };
+    if (['gpt-5', 'gpt-5.1', 'gpt-5.2', 'gpt-5.4', 'gpt-4.1', 'gpt-4o', 'deepseek-v4-pro'].includes(model)) {
+        return { group: 'D', limit: 30 };
     }
 
     if (model === 'deepseek-v4-flash') {
