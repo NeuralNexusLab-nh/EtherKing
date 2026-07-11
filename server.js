@@ -94,11 +94,11 @@ app.use((req, res, next) => {
 const getModelGroup = (model) => {
 
     if (['gpt-5', 'gpt-5.1', 'gpt-5.2', 'gpt-5.4', 'gpt-4.1', 'gpt-4o', 'deepseek-v4-pro'].includes(model)) {
-        return { group: 'D', limit: 30 };
+        return { group: 'D', limit: 60 };
     }
 
     if (model === 'deepseek-v4-flash') {
-        return { group: 'C', limit: 40 };
+        return { group: 'C', limit: 80 };
     }
 
     if ([
@@ -217,8 +217,7 @@ app.post('/api/models', async (req, res) => {
                     model,
                     messages: recentMessages,
                     stream: true,
-                    thinking: {"type": "disabled"},
-                    max_tokens: 10000
+                    thinking: {"type": "disabled"}
                 })
             });
 
@@ -236,8 +235,7 @@ app.post('/api/models', async (req, res) => {
                     model,
                     messages: recentMessages,
                     stream: true,
-                    service_tier: isFlex ? "flex" : "default",
-                    max_completion_tokens: 10000
+                    service_tier: isFlex ? "flex" : "default"
                 })
             });
 
