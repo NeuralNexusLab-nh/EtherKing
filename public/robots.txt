@@ -1,4 +1,3 @@
-# robots.txt create for EtherKing
-
 User-agent: *
-Disallow: *
+Disallow: /
+
