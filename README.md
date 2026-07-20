@@ -1,26 +1,33 @@
 # EtherKing
 
-EtherKing is an account-based, multi-model chat application. It provides secure registration and login, cloud-backed conversations, per-user daily model limits, and a responsive dark/light interface.
+EtherKing is an account-based, multi-model chat application with server-persisted conversations, per-user daily model limits, and a responsive dark/light interface.
 
-## What changed in v2
+## Features
 
 - Email/password registration, login, logout, and permanent account deletion
-- Opaque server-side sessions stored in PostgreSQL
-- Chats and messages stored per user in PostgreSQL instead of `localStorage`
-- Atomic per-user daily quotas for each model group
-- Authentication required for every model, usage, chat, and account API
-- SameSite cookies, CSRF tokens, same-origin enforcement, strict security headers, login throttling, and request size limits
-- Safe text/code rendering with no model-controlled HTML and no executable code iframe
+- Opaque server-side sessions stored in a local data file
+- Chats, messages, auth throttles, and per-user quotas persisted across restarts
+- Authentication and CSRF validation for chat, usage, and account operations
+- SameSite cookies, same-origin enforcement, strict security headers, login throttling, and request size limits
+- Safe text/code rendering with no model-controlled HTML or executable code iframe
 - A clean, responsive interface with dark and light themes only
+
+## Storage
+
+Runtime data is written to `data/store.json`. The payload is Base64-obfuscated so the file is not immediately human-readable, but it is **not encrypted** and must not be treated as encrypted storage.
+
+Writes are serialized and use a temporary file plus rename to avoid leaving a partially written store. The `data/` directory is excluded from Git.
+
+This storage mode is intended for one application process on a host with a persistent filesystem. Do not run multiple EtherKing instances against the same file. Back up `data/store.json` before upgrades or host migrations.
 
 ## Requirements
 
 - Node.js 20 or newer
-- PostgreSQL 14 or newer
+- A host with a persistent writable filesystem
 - An OpenAI API key, a DeepSeek API key, or both
 - HTTPS in production
 
-## Local setup
+## Setup
 
 ```bash
 cp .env.example .env
@@ -29,40 +36,37 @@ npm test
 npm start
 ```
 
-Set the environment variables from `.env.example` in your shell or deployment platform. The application creates its tables automatically on startup.
+The `data/` directory and initial store file are created automatically on startup.
 
 ## Environment variables
 
+EtherKing reads only these environment variables:
+
 | Name | Required | Description |
 | --- | --- | --- |
-| `DATABASE_URL` | Yes | PostgreSQL connection string. Use a managed persistent database in production. |
-| `APP_ORIGIN` | Production | Canonical HTTPS origin, for example `https://chat.example.com`. |
+| `PORT` | No | HTTP port, defaults to `3000`. |
 | `OAAPI` | For OpenAI models | OpenAI API key. Never expose it to the browser. |
 | `DSAPI` | For DeepSeek models | DeepSeek API key. Never expose it to the browser. |
-| `NODE_ENV` | Recommended | Set to `production` to enable Secure cookies and HSTS. |
-| `DATABASE_SSL` | Platform-specific | Set to `true` when the database requires verified TLS. |
-| `TRUST_PROXY` | Platform-specific | Set to `true` only behind one trusted reverse proxy. |
-| `PORT` | No | HTTP port, defaults to `3000`. |
-| `DATABASE_POOL_SIZE` | No | Maximum PostgreSQL pool size, defaults to `10`. |
 
 ## Deployment notes
 
-1. Provision persistent PostgreSQL. The application no longer writes runtime data to the local filesystem.
-2. Set `NODE_ENV=production` and an HTTPS `APP_ORIGIN`.
-3. Add provider keys as encrypted platform secrets.
-4. If a platform terminates TLS at exactly one reverse proxy, set `TRUST_PROXY=true`; otherwise leave it disabled.
-5. Keep PostgreSQL backups and define an account-data retention policy.
+1. Mount persistent storage for the repository's `data/` directory.
+2. Terminate traffic with HTTPS. Secure cookies and HSTS are enabled automatically when the request is HTTPS or the proxy supplies `X-Forwarded-Proto: https`.
+3. Add provider keys as protected platform secrets.
+4. Run exactly one application instance for each data file.
+5. Back up `data/store.json` and test restoration regularly.
 
-Existing browser-only conversations from the original release cannot be migrated automatically because they never reached the server. Users can retain them by exporting their browser storage before deployment if needed.
+Existing browser-only conversations from the original release cannot be migrated automatically because they never reached the server.
 
 ## Security model
 
-- Passwords use Node.js `scrypt` with a unique random salt.
-- Session and CSRF tokens are random; only SHA-256 token hashes are stored.
-- Session cookies are HttpOnly, SameSite Strict, and Secure in production.
-- Account deletion relies on PostgreSQL cascading deletes and requires the current password.
+- Passwords use Node.js `scrypt` with a unique random salt; passwords are never stored directly.
+- Session and CSRF tokens are random; only SHA-256 token hashes are stored in the file.
+- Session cookies are HttpOnly and SameSite Strict, and become Secure over HTTPS.
+- Account deletion removes the user's sessions, chats, messages, and quota records from the file.
 - Provider responses are rendered through DOM text nodes. Raw model HTML is never inserted into the page.
 - API request bodies, passwords, session tokens, chat content, and provider keys are not logged.
+- Base64 storage obfuscation is not encryption. Anyone who can read the file can decode its contents.
 
 Run `npm test` and `npm run check` before each deployment.
 

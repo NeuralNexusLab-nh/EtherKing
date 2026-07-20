@@ -10,12 +10,11 @@
   },
   "scripts": {
     "start": "node server.js",
-    "check": "node --check server.js && node --check lib/security.js && node --check lib/sse.js && node --check public/assets/auth.js && node --check public/assets/app.js",
+    "check": "node --check server.js && node --check lib/security.js && node --check lib/sse.js && node --check lib/storage.js && node --check public/assets/auth.js && node --check public/assets/app.js",
     "test": "node --test --test-isolation=none"
   },
   "dependencies": {
-    "express": "^5.1.0",
-    "pg": "^8.16.3"
+    "express": "^5.1.0"
   }
 }
 
