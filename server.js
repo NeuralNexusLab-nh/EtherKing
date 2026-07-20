@@ -15,11 +15,11 @@ const {
   parseCookies,
   randomToken,
   safeEqual,
-  todayUtc,
   validatePassword,
   verifyPassword
 } = require('./lib/security');
-const { SseTextDecoder } = require('./lib/sse');
+const { MODEL_REGISTRY, apiKeyFor, generateShortTitle, streamProviderText } = require('./lib/providers');
+const { PLAN_COSTS, getQuotaUsage, releaseQuota, reserveQuota } = require('./lib/quota');
 
 const PORT = Number(process.env.PORT || 3000);
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -29,24 +29,7 @@ const CSRF_COOKIE = 'etherking_csrf';
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const MAX_MESSAGE_LENGTH = 20_000;
 const MAX_PROVIDER_OUTPUT_BYTES = 2 * 1024 * 1024;
-
-const MODEL_REGISTRY = Object.freeze({
-  'deepseek-v4-flash': { provider: 'DeepSeek', group: 'C', limit: 80 },
-  'deepseek-v4-pro': { provider: 'DeepSeek', group: 'D', limit: 60 },
-  'gpt-4o': { provider: 'OpenAI', group: 'D', limit: 60 },
-  'gpt-4.1': { provider: 'OpenAI', group: 'D', limit: 60 },
-  'gpt-5-nano': { provider: 'OpenAI', group: 'B', limit: 200, flex: true },
-  'gpt-4o-mini': { provider: 'OpenAI', group: 'B', limit: 200 },
-  'gpt-4.1-nano': { provider: 'OpenAI', group: 'B', limit: 200 },
-  'gpt-5-mini': { provider: 'OpenAI', group: 'B', limit: 200, flex: true },
-  'gpt-5': { provider: 'OpenAI', group: 'D', limit: 60, flex: true },
-  'gpt-5.1': { provider: 'OpenAI', group: 'D', limit: 60, flex: true },
-  'gpt-5.2': { provider: 'OpenAI', group: 'D', limit: 60, flex: true },
-  'o4-mini': { provider: 'OpenAI', group: 'B', limit: 200, flex: true },
-  'gpt-5.4': { provider: 'OpenAI', group: 'D', limit: 60, flex: true },
-  'gpt-5.4-nano': { provider: 'OpenAI', group: 'B', limit: 200, flex: true },
-  'gpt-5.4-mini': { provider: 'OpenAI', group: 'B', limit: 200, flex: true }
-});
+const PROVIDER_TIMEOUT_MS = 10 * 60 * 1000;
 
 function isSecureRequest(req) {
   const forwardedProtocol = String(req.get('X-Forwarded-Proto') || '').split(',')[0].trim().toLowerCase();
@@ -149,47 +132,6 @@ async function checkAuthRateLimit(store, req) {
   });
 }
 
-async function reserveQuota(store, userId, group, limit) {
-  return store.mutate((data) => {
-    const date = todayUtc();
-    let usage = data.dailyUsage.find((item) => item.userId === userId && item.date === date && item.group === group);
-    if (!usage) {
-      usage = { userId, date, group, count: 0, updatedAt: new Date().toISOString() };
-      data.dailyUsage.push(usage);
-    }
-    if (usage.count >= limit) return null;
-    usage.count += 1;
-    usage.updatedAt = new Date().toISOString();
-    data.dailyUsage = data.dailyUsage.filter((item) => item.date >= new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10));
-    return usage.count;
-  });
-}
-
-async function releaseQuota(store, userId, group) {
-  await store.mutate((data) => {
-    const usage = data.dailyUsage.find((item) => item.userId === userId && item.date === todayUtc() && item.group === group);
-    if (usage) {
-      usage.count = Math.max(usage.count - 1, 0);
-      usage.updatedAt = new Date().toISOString();
-    }
-  });
-}
-
-function providerRequest(model, config, history) {
-  if (config.provider === 'DeepSeek') {
-    return {
-      url: 'https://api.deepseek.com/chat/completions',
-      apiKey: process.env.DSAPI,
-      body: { model, messages: history, stream: true, thinking: { type: 'disabled' } }
-    };
-  }
-  return {
-    url: 'https://api.openai.com/v1/chat/completions',
-    apiKey: process.env.OAAPI,
-    body: { model, messages: history, stream: true, ...(config.flex ? { service_tier: 'flex' } : {}) }
-  };
-}
-
 function serializeChat(chat) {
   return {
     id: chat.id,
@@ -205,8 +147,193 @@ function serializeMessage(message) {
     id: message.id,
     role: message.role,
     content: message.content,
+    model: message.model || null,
     created_at: message.createdAt
   };
+}
+
+function serializeGeneration(job) {
+  if (!job) return null;
+  return {
+    id: job.id,
+    status: job.status,
+    model: job.model,
+    error: job.status === 'failed' ? job.error || 'Generation failed.' : null,
+    created_at: job.createdAt,
+    updated_at: job.updatedAt
+  };
+}
+
+function sortedChatMessages(data, chatId, userId) {
+  return data.messages
+    .filter((message) => message.chatId === chatId && message.userId === userId)
+    .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
+}
+
+function activeGeneration(data, chatId, userId) {
+  return data.generationJobs.find((job) => job.chatId === chatId && job.userId === userId && ['queued', 'in_progress'].includes(job.status));
+}
+
+async function processGeneration(store, jobId) {
+  let job;
+  let config;
+  let cost;
+  try {
+    job = await store.mutate((data) => {
+      const item = data.generationJobs.find((candidate) => candidate.id === jobId && candidate.status === 'queued');
+      if (!item) return null;
+      item.status = 'in_progress';
+      item.updatedAt = new Date().toISOString();
+      return item;
+    });
+    if (!job) return;
+    config = MODEL_REGISTRY[job.model];
+    cost = PLAN_COSTS[config.plan];
+    const history = store.read((data) => {
+      const ordered = sortedChatMessages(data, job.chatId, job.userId);
+      const userIndex = ordered.findIndex((message) => message.id === job.userMessageId);
+      return ordered.slice(0, userIndex + 1).slice(-24).map((message) => ({ role: message.role, content: message.content }));
+    });
+    let assistantText = '';
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), PROVIDER_TIMEOUT_MS);
+    try {
+      await streamProviderText(job.model, config, history, (text) => {
+        if (Buffer.byteLength(assistantText, 'utf8') + Buffer.byteLength(text, 'utf8') > MAX_PROVIDER_OUTPUT_BYTES) {
+          throw new Error('Provider output exceeded the safety limit.');
+        }
+        assistantText += text;
+      }, { signal: controller.signal });
+    } finally {
+      clearTimeout(timeout);
+    }
+    if (!assistantText.trim()) throw new Error('The model returned an empty response.');
+
+    const titleInput = store.read((data) => {
+      const ordered = sortedChatMessages(data, job.chatId, job.userId);
+      const firstUser = ordered.find((message) => message.role === 'user');
+      const chat = data.chats.find((item) => item.id === job.chatId && item.userId === job.userId);
+      return chat?.title === 'New chat' && firstUser?.id === job.userMessageId ? firstUser.content : null;
+    });
+    let generatedTitle = null;
+    if (titleInput) {
+      const titleController = new AbortController();
+      const titleTimeout = setTimeout(() => titleController.abort(), 15_000);
+      try {
+        generatedTitle = await generateShortTitle(titleInput, compactTitle(titleInput), { signal: titleController.signal });
+      } finally {
+        clearTimeout(titleTimeout);
+      }
+    }
+
+    await store.mutate((data) => {
+      const item = data.generationJobs.find((candidate) => candidate.id === jobId);
+      if (!item) return;
+      const now = new Date().toISOString();
+      data.messages.push({
+        id: crypto.randomUUID(),
+        chatId: job.chatId,
+        userId: job.userId,
+        role: 'assistant',
+        model: job.model,
+        content: assistantText,
+        createdAt: now
+      });
+      const chat = data.chats.find((candidate) => candidate.id === job.chatId && candidate.userId === job.userId);
+      if (chat) {
+        if (generatedTitle && chat.title === 'New chat') chat.title = generatedTitle;
+        chat.updatedAt = now;
+      }
+      item.status = 'completed';
+      item.updatedAt = now;
+      delete item.error;
+    });
+  } catch (error) {
+    if (job && config && cost) {
+      try { await releaseQuota(store, job.userId, config.plan, cost); } catch {}
+    }
+    if (job) {
+      await store.mutate((data) => {
+        const item = data.generationJobs.find((candidate) => candidate.id === jobId);
+        if (!item) return;
+        item.status = 'failed';
+        item.error = error.code === 'PROVIDER_NOT_CONFIGURED' ? error.message : 'The model could not complete this response.';
+        item.updatedAt = new Date().toISOString();
+      }).catch(() => {});
+    }
+    console.error(`[generation ${jobId}] failed:`, error.message);
+  }
+}
+
+async function queueGeneration(store, { userId, chatId, model, prepare }) {
+  const config = MODEL_REGISTRY[model];
+  if (!config) {
+    const error = new Error('Invalid model.');
+    error.code = 'INVALID_MODEL';
+    throw error;
+  }
+  if (!apiKeyFor(config)) {
+    const error = new Error(`${config.provider} is not configured.`);
+    error.code = 'PROVIDER_NOT_CONFIGURED';
+    throw error;
+  }
+  const cost = PLAN_COSTS[config.plan];
+  const quota = await reserveQuota(store, userId, config.plan, cost);
+  if (!quota) {
+    const error = new Error('A usage limit for this plan has been reached.');
+    error.code = 'QUOTA_EXHAUSTED';
+    throw error;
+  }
+  try {
+    const result = await store.mutate((data) => {
+      const chat = data.chats.find((candidate) => candidate.id === chatId && candidate.userId === userId);
+      if (!chat) return null;
+      if (activeGeneration(data, chatId, userId)) {
+        const error = new Error('A response is already being generated for this chat.');
+        error.code = 'GENERATION_ACTIVE';
+        throw error;
+      }
+      const userMessage = prepare(data, chat);
+      const now = new Date().toISOString();
+      const job = {
+        id: crypto.randomUUID(),
+        chatId,
+        userId,
+        userMessageId: userMessage.id,
+        model,
+        plan: config.plan,
+        cost,
+        status: 'queued',
+        createdAt: now,
+        updatedAt: now
+      };
+      data.generationJobs.push(job);
+      chat.model = model;
+      chat.updatedAt = now;
+      return { job, userMessage };
+    });
+    if (!result) {
+      const error = new Error('Chat not found.');
+      error.code = 'CHAT_NOT_FOUND';
+      throw error;
+    }
+    setImmediate(() => processGeneration(store, result.job.id));
+    return { ...result, quota };
+  } catch (error) {
+    await releaseQuota(store, userId, config.plan, cost).catch(() => {});
+    throw error;
+  }
+}
+
+function generationErrorStatus(error) {
+  return {
+    INVALID_MODEL: 400,
+    CHAT_NOT_FOUND: 404,
+    MESSAGE_NOT_FOUND: 404,
+    PROVIDER_NOT_CONFIGURED: 503,
+    QUOTA_EXHAUSTED: 429,
+    GENERATION_ACTIVE: 409
+  }[error.code] || 0;
 }
 
 function createApp(store) {
@@ -223,6 +350,9 @@ function createApp(store) {
     res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=()');
     res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
     res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
     res.setHeader('Content-Security-Policy', [
       "default-src 'self'",
       "script-src 'self'",
@@ -240,10 +370,6 @@ function createApp(store) {
     next();
   });
 
-  app.use('/api', (req, res, next) => {
-    res.setHeader('Cache-Control', 'no-store');
-    next();
-  });
   app.use(express.json({ limit: '256kb', type: 'application/json' }));
 
   app.use((req, res, next) => {
@@ -278,6 +404,12 @@ function createApp(store) {
   app.param('chatId', (req, res, next, value) => {
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)) {
       return res.status(404).json({ error: 'Chat not found.' });
+    }
+    next();
+  });
+  app.param('messageId', (req, res, next, value) => {
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)) {
+      return res.status(404).json({ error: 'Message not found.' });
     }
     next();
   });
@@ -382,6 +514,8 @@ function createApp(store) {
         data.chats = data.chats.filter((chat) => chat.userId !== userId);
         data.messages = data.messages.filter((message) => !chatIds.has(message.chatId));
         data.dailyUsage = data.dailyUsage.filter((usage) => usage.userId !== userId);
+        data.quotaUsage = data.quotaUsage.filter((usage) => usage.userId !== userId);
+        data.generationJobs = data.generationJobs.filter((job) => job.userId !== userId);
       });
       clearAuthCookies(req, res);
       res.status(204).end();
@@ -391,17 +525,24 @@ function createApp(store) {
   });
 
   app.get('/api/models', ...requireAuth, (req, res) => {
-    const models = Object.entries(MODEL_REGISTRY).map(([id, config]) => ({ id, provider: config.provider, group: config.group, dailyLimit: config.limit }));
+    const models = Object.entries(MODEL_REGISTRY).map(([id, config]) => ({
+      id,
+      name: config.name,
+      provider: config.provider,
+      plan: config.plan,
+      cost: PLAN_COSTS[config.plan]
+    }));
     res.json({ models });
   });
 
-  app.get('/api/usage', ...requireAuth, (req, res) => {
-    const limits = {};
-    for (const config of Object.values(MODEL_REGISTRY)) limits[config.group] = config.limit;
-    const counts = store.read((data) => Object.fromEntries(data.dailyUsage
-      .filter((item) => item.userId === req.session.userId && item.date === todayUtc())
-      .map((item) => [item.group, item.count])));
-    res.json({ date: todayUtc(), usage: Object.entries(limits).map(([group, limit]) => ({ group, used: counts[group] || 0, limit })) });
+  app.get('/api/usage', ...requireAuth, async (req, res, next) => {
+    try {
+      const plans = Object.values(MODEL_REGISTRY).map((config) => config.plan);
+      const usage = await getQuotaUsage(store, req.session.userId, plans);
+      res.json({ usage });
+    } catch (error) {
+      next(error);
+    }
   });
 
   app.get('/api/chats', ...requireAuth, (req, res) => {
@@ -419,7 +560,7 @@ function createApp(store) {
       const chat = {
         id: crypto.randomUUID(),
         userId: req.session.userId,
-        title: compactTitle(req.body?.title || 'New chat'),
+        title: 'New chat',
         model: MODEL_REGISTRY[req.body?.model] ? req.body.model : 'gpt-5.4-mini',
         createdAt: now,
         updatedAt: now
@@ -438,7 +579,10 @@ function createApp(store) {
       const messages = data.messages.filter((message) => message.chatId === chat.id && message.userId === req.session.userId)
         .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt))
         .map(serializeMessage);
-      return { chat: serializeChat(chat), messages };
+      const generation = data.generationJobs
+        .filter((job) => job.chatId === chat.id && job.userId === req.session.userId)
+        .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))[0] || null;
+      return { chat: serializeChat(chat), messages, generation: serializeGeneration(generation) };
     });
     if (!result) return res.status(404).json({ error: 'Chat not found.' });
     res.json(result);
@@ -467,6 +611,7 @@ function createApp(store) {
         if (!exists) return false;
         data.chats = data.chats.filter((chat) => chat.id !== req.params.chatId || chat.userId !== req.session.userId);
         data.messages = data.messages.filter((message) => message.chatId !== req.params.chatId || message.userId !== req.session.userId);
+        data.generationJobs = data.generationJobs.filter((job) => job.chatId !== req.params.chatId || job.userId !== req.session.userId);
         return true;
       });
       if (!deleted) return res.status(404).json({ error: 'Chat not found.' });
@@ -479,106 +624,113 @@ function createApp(store) {
   app.post('/api/chats/:chatId/messages', ...requireAuth, requireCsrf, async (req, res, next) => {
     const content = typeof req.body?.content === 'string' ? req.body.content.trim() : '';
     const model = req.body?.model;
-    const config = MODEL_REGISTRY[model];
     if (!content || content.length > MAX_MESSAGE_LENGTH) return res.status(400).json({ error: `Message must contain between 1 and ${MAX_MESSAGE_LENGTH} characters.` });
-    if (!config) return res.status(400).json({ error: 'Invalid model.' });
-
-    let quotaReserved = false;
-    let providerAccepted = false;
-    let assistantText = '';
-    let providerTimeout;
     try {
-      const chatExists = store.read((data) => data.chats.some((chat) => chat.id === req.params.chatId && chat.userId === req.session.userId));
-      if (!chatExists) return res.status(404).json({ error: 'Chat not found.' });
-
-      const used = await reserveQuota(store, req.session.userId, config.group, config.limit);
-      if (used === null) return res.status(429).json({ error: 'Your daily limit for this model group has been reached.' });
-      quotaReserved = true;
-
-      await store.mutate((data) => {
-        const now = new Date().toISOString();
-        data.messages.push({ id: crypto.randomUUID(), chatId: req.params.chatId, userId: req.session.userId, role: 'user', content, createdAt: now });
-        const chat = data.chats.find((item) => item.id === req.params.chatId && item.userId === req.session.userId);
-        if (chat) {
-          if (chat.title === 'New chat') chat.title = compactTitle(content);
-          chat.model = model;
-          chat.updatedAt = now;
+      const result = await queueGeneration(store, {
+        userId: req.session.userId,
+        chatId: req.params.chatId,
+        model,
+        prepare(data) {
+          const message = {
+            id: crypto.randomUUID(),
+            chatId: req.params.chatId,
+            userId: req.session.userId,
+            role: 'user',
+            content,
+            createdAt: new Date().toISOString()
+          };
+          data.messages.push(message);
+          return message;
         }
       });
-
-      const history = store.read((data) => data.messages
-        .filter((message) => message.chatId === req.params.chatId && message.userId === req.session.userId)
-        .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt))
-        .slice(-12)
-        .map((message) => ({ role: message.role, content: message.content })));
-      const provider = providerRequest(model, config, history);
-      if (!provider.apiKey) {
-        await releaseQuota(store, req.session.userId, config.group);
-        quotaReserved = false;
-        return res.status(503).json({ error: `${config.provider} is not configured.` });
-      }
-
-      const controller = new AbortController();
-      providerTimeout = setTimeout(() => controller.abort(), 120_000);
-      res.on('close', () => {
-        if (!res.writableEnded) controller.abort();
+      res.status(202).json({
+        message: serializeMessage(result.userMessage),
+        generation: serializeGeneration(result.job),
+        quota: result.quota
       });
-      const upstream = await fetch(provider.url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${provider.apiKey}` },
-        body: JSON.stringify(provider.body),
-        signal: controller.signal
-      });
-
-      if (!upstream.ok || !upstream.body) {
-        clearTimeout(providerTimeout);
-        providerTimeout = null;
-        await releaseQuota(store, req.session.userId, config.group);
-        quotaReserved = false;
-        return res.status(502).json({ error: 'The model provider rejected the request.' });
-      }
-      providerAccepted = true;
-      res.status(200);
-      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-      res.setHeader('X-Content-Type-Options', 'nosniff');
-      res.setHeader('X-RateLimit-Group', config.group);
-      res.setHeader('X-RateLimit-Limit', String(config.limit));
-      res.setHeader('X-RateLimit-Remaining', String(Math.max(config.limit - used, 0)));
-      res.flushHeaders();
-
-      const textDecoder = new TextDecoder();
-      const parser = new SseTextDecoder((text) => {
-        if (Buffer.byteLength(assistantText, 'utf8') + Buffer.byteLength(text, 'utf8') > MAX_PROVIDER_OUTPUT_BYTES) throw new Error('Provider output exceeded the safety limit.');
-        assistantText += text;
-        if (!res.destroyed) res.write(text);
-      });
-      for await (const chunk of upstream.body) parser.push(textDecoder.decode(chunk, { stream: true }));
-      parser.push(textDecoder.decode());
-      parser.flush();
-      clearTimeout(providerTimeout);
-      providerTimeout = null;
-
-      if (assistantText.trim()) {
-        await store.mutate((data) => {
-          const now = new Date().toISOString();
-          data.messages.push({ id: crypto.randomUUID(), chatId: req.params.chatId, userId: req.session.userId, role: 'assistant', content: assistantText, createdAt: now });
-          const chat = data.chats.find((item) => item.id === req.params.chatId && item.userId === req.session.userId);
-          if (chat) chat.updatedAt = now;
-        });
-      }
-      if (!res.destroyed) res.end();
     } catch (error) {
-      if (providerTimeout) clearTimeout(providerTimeout);
-      if (quotaReserved && !providerAccepted) {
-        try { await releaseQuota(store, req.session.userId, config.group); } catch {}
-      }
-      console.error(`[${req.requestId}] chat request failed:`, error.message);
-      if (!res.headersSent) return next(error);
-      if (!res.destroyed) res.end('\n\nThe response was interrupted. Please try again.');
+      const status = generationErrorStatus(error);
+      if (status) return res.status(status).json({ error: error.message });
+      next(error);
     }
   });
 
-  app.use('/assets', express.static(path.join(PUBLIC_DIR, 'assets'), { dotfiles: 'deny', etag: true, fallthrough: false, maxAge: '1h' }));
+  app.patch('/api/chats/:chatId/messages/:messageId', ...requireAuth, requireCsrf, async (req, res, next) => {
+    const content = typeof req.body?.content === 'string' ? req.body.content.trim() : '';
+    const model = req.body?.model;
+    if (!content || content.length > MAX_MESSAGE_LENGTH) return res.status(400).json({ error: `Message must contain between 1 and ${MAX_MESSAGE_LENGTH} characters.` });
+    try {
+      const result = await queueGeneration(store, {
+        userId: req.session.userId,
+        chatId: req.params.chatId,
+        model,
+        prepare(data) {
+          const ordered = sortedChatMessages(data, req.params.chatId, req.session.userId);
+          const index = ordered.findIndex((message) => message.id === req.params.messageId && message.role === 'user');
+          if (index < 0) {
+            const error = new Error('Message not found.');
+            error.code = 'MESSAGE_NOT_FOUND';
+            throw error;
+          }
+          const target = ordered[index];
+          const laterIds = new Set(ordered.slice(index + 1).map((message) => message.id));
+          data.messages = data.messages.filter((message) => !laterIds.has(message.id));
+          data.generationJobs = data.generationJobs.filter((job) => job.chatId !== req.params.chatId || !['failed', 'completed'].includes(job.status));
+          target.content = content;
+          target.updatedAt = new Date().toISOString();
+          return target;
+        }
+      });
+      res.status(202).json({ message: serializeMessage(result.userMessage), generation: serializeGeneration(result.job), quota: result.quota });
+    } catch (error) {
+      const status = generationErrorStatus(error);
+      if (status) return res.status(status).json({ error: error.message });
+      next(error);
+    }
+  });
+
+  app.post('/api/chats/:chatId/messages/:messageId/regenerate', ...requireAuth, requireCsrf, async (req, res, next) => {
+    const model = req.body?.model;
+    try {
+      const result = await queueGeneration(store, {
+        userId: req.session.userId,
+        chatId: req.params.chatId,
+        model,
+        prepare(data) {
+          const ordered = sortedChatMessages(data, req.params.chatId, req.session.userId);
+          const index = ordered.findIndex((message) => message.id === req.params.messageId && message.role === 'assistant');
+          if (index < 1) {
+            const error = new Error('Message not found.');
+            error.code = 'MESSAGE_NOT_FOUND';
+            throw error;
+          }
+          let userMessage = null;
+          for (let candidate = index - 1; candidate >= 0; candidate -= 1) {
+            if (ordered[candidate].role === 'user') {
+              userMessage = ordered[candidate];
+              break;
+            }
+          }
+          if (!userMessage) {
+            const error = new Error('Message not found.');
+            error.code = 'MESSAGE_NOT_FOUND';
+            throw error;
+          }
+          const removeIds = new Set(ordered.slice(index).map((message) => message.id));
+          data.messages = data.messages.filter((message) => !removeIds.has(message.id));
+          data.generationJobs = data.generationJobs.filter((job) => job.chatId !== req.params.chatId || !['failed', 'completed'].includes(job.status));
+          return userMessage;
+        }
+      });
+      res.status(202).json({ generation: serializeGeneration(result.job), quota: result.quota });
+    } catch (error) {
+      const status = generationErrorStatus(error);
+      if (status) return res.status(status).json({ error: error.message });
+      next(error);
+    }
+  });
+
+  app.use('/assets', express.static(path.join(PUBLIC_DIR, 'assets'), { dotfiles: 'deny', etag: false, fallthrough: false, maxAge: 0, lastModified: false }));
   app.get('/', optionalAuth, (req, res) => {
     if (req.session) return res.redirect('/app');
     res.setHeader('Cache-Control', 'no-store');
@@ -607,6 +759,21 @@ function createApp(store) {
 
 async function start() {
   const store = await new FileStore(DATA_FILE).init();
+  const interruptedJobs = store.read((data) => data.generationJobs.filter((job) => ['queued', 'in_progress'].includes(job.status)));
+  for (const job of interruptedJobs) {
+    await releaseQuota(store, job.userId, job.plan, job.cost).catch(() => {});
+  }
+  if (interruptedJobs.length) {
+    const interruptedIds = new Set(interruptedJobs.map((job) => job.id));
+    await store.mutate((data) => {
+      for (const job of data.generationJobs) {
+        if (!interruptedIds.has(job.id)) continue;
+        job.status = 'failed';
+        job.error = 'Generation was interrupted by a server restart. Please regenerate the response.';
+        job.updatedAt = new Date().toISOString();
+      }
+    });
+  }
   const app = createApp(store);
   const server = app.listen(PORT, () => console.log(`EtherKing listening on port ${PORT}`));
   const shutdown = () => server.close(() => process.exit(0));
@@ -621,5 +788,5 @@ if (require.main === module) {
   });
 }
 
-module.exports = { DATA_FILE, MODEL_REGISTRY, createApp, reserveQuota };
+module.exports = { DATA_FILE, MODEL_REGISTRY, createApp, processGeneration, queueGeneration, reserveQuota };
 

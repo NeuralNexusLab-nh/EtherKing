@@ -53,6 +53,7 @@ async function submitAuth(form, endpoint) {
     const response = await fetch(endpoint, {
       method: 'POST',
       credentials: 'same-origin',
+      cache: 'no-store',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data)
     });
@@ -77,7 +78,7 @@ registerForm.addEventListener('submit', (event) => {
   submitAuth(registerForm, '/api/auth/register');
 });
 
-fetch('/api/session', { credentials: 'same-origin' })
+fetch('/api/session', { credentials: 'same-origin', cache: 'no-store' })
   .then((response) => response.ok ? response.json() : null)
   .then((session) => {
     if (session?.authenticated) window.location.replace('/app');
