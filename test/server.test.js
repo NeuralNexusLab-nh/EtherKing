@@ -2,11 +2,16 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { createApp } = require('../server');
+const fs = require('fs/promises');
+const os = require('os');
+const path = require('path');
+const { FileStore } = require('../lib/storage');
+const { createApp, reserveQuota } = require('../server');
 
 async function withServer(run) {
-  const pool = { query: async () => ({ rowCount: 1, rows: [{ '?column?': 1 }] }) };
-  const app = createApp(pool);
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'etherking-http-'));
+  const store = await new FileStore(path.join(directory, 'store.json')).init();
+  const app = createApp(store);
   const server = await new Promise((resolve) => {
     const instance = app.listen(0, '127.0.0.1', () => resolve(instance));
   });
@@ -15,6 +20,7 @@ async function withServer(run) {
     await run(`http://127.0.0.1:${address.port}`);
   } finally {
     await new Promise((resolve) => server.close(resolve));
+    await fs.rm(directory, { recursive: true, force: true });
   }
 }
 
@@ -62,5 +68,44 @@ test('rejects malformed JSON without leaking an internal error', async () => {
     assert.equal(response.status, 400);
     assert.deepEqual(await response.json(), { error: 'Invalid JSON body.' });
   });
+});
+
+test('registers a user and persists an authenticated chat', async () => {
+  await withServer(async (baseUrl) => {
+    const registration = await fetch(`${baseUrl}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Origin: baseUrl },
+      body: JSON.stringify({ displayName: 'Ada User', email: 'ada@example.com', password: 'correct-horse-123' })
+    });
+    assert.equal(registration.status, 201);
+    const setCookies = registration.headers.getSetCookie();
+    const cookieHeader = setCookies.map((value) => value.split(';')[0]).join('; ');
+    const csrfCookie = setCookies.find((value) => value.startsWith('etherking_csrf='));
+    const csrfToken = decodeURIComponent(csrfCookie.split(';')[0].split('=').slice(1).join('='));
+
+    const created = await fetch(`${baseUrl}/api/chats`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: cookieHeader, Origin: baseUrl, 'X-CSRF-Token': csrfToken },
+      body: JSON.stringify({ title: 'Persist this chat', model: 'gpt-5.4-mini' })
+    });
+    assert.equal(created.status, 201);
+    const chat = (await created.json()).chat;
+
+    const fetched = await fetch(`${baseUrl}/api/chats/${chat.id}`, { headers: { Cookie: cookieHeader } });
+    assert.equal(fetched.status, 200);
+    assert.equal((await fetched.json()).chat.title, 'Persist this chat');
+  });
+});
+
+test('keeps daily model quotas separate per user', async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'etherking-quota-'));
+  try {
+    const store = await new FileStore(path.join(directory, 'store.json')).init();
+    assert.equal(await reserveQuota(store, 'user-a', 'D', 1), 1);
+    assert.equal(await reserveQuota(store, 'user-a', 'D', 1), null);
+    assert.equal(await reserveQuota(store, 'user-b', 'D', 1), 1);
+  } finally {
+    await fs.rm(directory, { recursive: true, force: true });
+  }
 });
 
