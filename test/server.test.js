@@ -7,6 +7,7 @@ const os = require('os');
 const path = require('path');
 const { FileStore } = require('../lib/storage');
 const { createApp, reserveQuota } = require('../server');
+const { getQuotaUsage } = require('../lib/quota');
 
 async function withServer(run) {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'etherking-http-'));
@@ -32,7 +33,18 @@ test('serves the account page with strict browser security headers', async () =>
     assert.match(response.headers.get('content-security-policy'), /default-src 'self'/);
     assert.equal(response.headers.get('x-frame-options'), 'DENY');
     assert.equal(response.headers.get('referrer-policy'), 'no-referrer');
+    assert.match(response.headers.get('cache-control'), /no-store/);
     assert.match(body, /Welcome back/);
+  });
+});
+
+test('disables browser caching for frontend assets', async () => {
+  await withServer(async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/assets/auth.js`);
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get('cache-control'), /no-store/);
+    assert.equal(response.headers.get('etag'), null);
+    assert.equal(response.headers.get('last-modified'), null);
   });
 });
 
@@ -93,17 +105,26 @@ test('registers a user and persists an authenticated chat', async () => {
 
     const fetched = await fetch(`${baseUrl}/api/chats/${chat.id}`, { headers: { Cookie: cookieHeader } });
     assert.equal(fetched.status, 200);
-    assert.equal((await fetched.json()).chat.title, 'Persist this chat');
+    assert.equal((await fetched.json()).chat.title, 'New chat');
   });
 });
 
-test('keeps daily model quotas separate per user', async () => {
+test('keeps rolling dual-window point quotas separate per user and clamps display at zero', async () => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'etherking-quota-'));
   try {
     const store = await new FileStore(path.join(directory, 'store.json')).init();
-    assert.equal(await reserveQuota(store, 'user-a', 'D', 1), 1);
-    assert.equal(await reserveQuota(store, 'user-a', 'D', 1), null);
-    assert.equal(await reserveQuota(store, 'user-b', 'D', 1), 1);
+    const now = Date.UTC(2026, 6, 20, 0, 0, 0);
+    for (let index = 0; index < 67; index += 1) {
+      assert.notEqual(await reserveQuota(store, 'user-a', 'basic', 1.5, now), null);
+    }
+    assert.equal(await reserveQuota(store, 'user-a', 'basic', 1.5, now), null);
+    assert.notEqual(await reserveQuota(store, 'user-b', 'basic', 1.5, now), null);
+    const usage = await getQuotaUsage(store, 'user-a', ['basic'], now);
+    assert.equal(usage[0].windows.fiveHour.remainingPercent, 0);
+    assert.ok(usage[0].windows.weekly.remainingPercent > 0);
+
+    const resetUsage = await getQuotaUsage(store, 'user-a', ['basic'], now + (5 * 60 * 60 * 1000) + 1);
+    assert.equal(resetUsage[0].windows.fiveHour.remainingPercent, 100);
   } finally {
     await fs.rm(directory, { recursive: true, force: true });
   }
