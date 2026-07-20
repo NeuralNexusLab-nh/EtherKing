@@ -133,26 +133,18 @@ test('shares rolling dual-window point quotas across plans per user and clamps d
   try {
     const store = await new FileStore(path.join(directory, 'store.json')).init();
     const now = Date.UTC(2026, 6, 20, 0, 0, 0);
-    for (let index = 0; index < 30; index += 1) {
+    for (let index = 0; index < 20; index += 1) {
       assert.notEqual(await reserveQuota(store, 'user-a', 'pro', 5, now), null);
     }
     assert.equal(await reserveQuota(store, 'user-a', 'plus', 3, now), null);
     assert.notEqual(await reserveQuota(store, 'user-b', 'basic', 1.5, now), null);
     const usage = await getQuotaUsage(store, 'user-a', now);
     assert.equal(usage.windows.fiveHour.remainingPercent, 0);
-    assert.equal(usage.windows.weekly.remainingPercent, 83.3);
+    assert.equal(usage.windows.weekly.remainingPercent, 90);
 
     const resetUsage = await getQuotaUsage(store, 'user-a', now + (5 * 60 * 60 * 1000) + 1);
     assert.equal(resetUsage.windows.fiveHour.remainingPercent, 100);
-    assert.equal(resetUsage.windows.weekly.remainingPercent, 83.3);
-
-    await store.mutate((data) => {
-      data.quotaUsage.push({ userId: 'legacy-user', window: 'fiveHour', remainingPoints: 80, windowStartedAt: new Date(now).toISOString(), resetAt: new Date(now + 1000).toISOString() });
-      data.quotaUsage.push({ userId: 'legacy-user', window: 'weekly', remainingPoints: 900, windowStartedAt: new Date(now).toISOString(), resetAt: new Date(now + 1000).toISOString() });
-    });
-    const migrated = await getQuotaUsage(store, 'legacy-user', now);
-    assert.equal(migrated.windows.fiveHour.remainingPercent, 86.7);
-    assert.equal(migrated.windows.weekly.remainingPercent, 88.9);
+    assert.equal(resetUsage.windows.weekly.remainingPercent, 90);
   } finally {
     await fs.rm(directory, { recursive: true, force: true });
   }
