@@ -182,7 +182,7 @@ function renderChats() {
     const remove = document.createElement('button');
     remove.className = 'chat-delete';
     remove.type = 'button';
-    remove.textContent = '?';
+    remove.textContent = 'x';
     remove.setAttribute('aria-label', `Delete ${chat.title}`);
     remove.addEventListener('click', (event) => {
       event.stopPropagation();
@@ -229,7 +229,7 @@ function startNewChat() {
 document.getElementById('new-chat').addEventListener('click', startNewChat);
 
 async function deleteChat(chatId, title) {
-  if (!window.confirm(`Delete ??{title}?? This cannot be undone.`)) return;
+  if (!window.confirm(`Delete "${title}"? This cannot be undone.`)) return;
   try {
     await api(`/api/chats/${encodeURIComponent(chatId)}`, { method: 'DELETE' });
     state.chats = state.chats.filter((chat) => chat.id !== chatId);
@@ -337,7 +337,7 @@ async function loadModels() {
   payload.models.forEach((model) => {
     const option = document.createElement('option');
     option.value = model.id;
-    option.textContent = `${model.id} 繚 ${model.provider}`;
+    option.textContent = `${model.id} - ${model.provider}`;
     modelSelect.appendChild(option);
   });
   const saved = localStorage.getItem('etherking_model');
