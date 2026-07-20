@@ -2,6 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const crypto = require('crypto');
 const fs = require('fs/promises');
 const os = require('os');
 const path = require('path');
@@ -18,12 +19,30 @@ async function withServer(run) {
   });
   try {
     const address = server.address();
-    await run(`http://127.0.0.1:${address.port}`);
+    await run(`http://127.0.0.1:${address.port}`, store);
   } finally {
     await new Promise((resolve) => server.close(resolve));
     await fs.rm(directory, { recursive: true, force: true });
   }
 }
+
+test('serves shared chats at the same read-only chat URL without authentication', async () => {
+  await withServer(async (baseUrl, store) => {
+    const userId = crypto.randomUUID();
+    const chatId = crypto.randomUUID();
+    await store.mutate((data) => {
+      data.chats.push({ id: chatId, userId, title: 'Shared chat', model: 'gpt-5.4-mini', isShared: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+      data.messages.push({ id: crypto.randomUUID(), chatId, userId, role: 'assistant', content: 'Public answer', createdAt: new Date().toISOString() });
+    });
+    const apiResponse = await fetch(`${baseUrl}/api/shared/chats/${chatId}`);
+    assert.equal(apiResponse.status, 200);
+    const payload = await apiResponse.json();
+    assert.equal(payload.readOnly, true);
+    assert.equal(payload.messages[0].content, 'Public answer');
+    const pageResponse = await fetch(`${baseUrl}/chats/${chatId}`, { redirect: 'manual' });
+    assert.equal(pageResponse.status, 200);
+  });
+});
 
 test('serves the account page with strict browser security headers', async () => {
   await withServer(async (baseUrl) => {
