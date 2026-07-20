@@ -2,13 +2,17 @@
 
 const state = {
   user: null,
+  authenticated: false,
+  readOnly: false,
+  currentChat: null,
   chats: [],
   models: [],
   activeChatId: null,
   messages: [],
   generation: null,
   pollTimer: null,
-  lastGenerationNotice: null
+  lastGenerationNotice: null,
+  renderedMessageFingerprint: ''
 };
 
 const root = document.documentElement;
@@ -25,6 +29,19 @@ const modelSelect = document.getElementById('model-select');
 const accountDialog = document.getElementById('account-dialog');
 const usageDialog = document.getElementById('usage-dialog');
 const toast = document.getElementById('toast');
+const shareButton = document.getElementById('share-button');
+
+function chatIdFromPath() {
+  const match = /^\/chats\/([0-9a-f-]{36})$/i.exec(window.location.pathname);
+  return match ? match[1] : null;
+}
+
+function setReadOnly(value) {
+  state.readOnly = value;
+  document.body.classList.toggle('shared-view', value);
+  modelSelect.disabled = value;
+  if (value) clearPoll();
+}
 
 function setTheme(theme) {
   const value = theme === 'light' ? 'light' : 'dark';
@@ -349,6 +366,7 @@ async function regenerateMessage(message) {
 function createMessageElement(message) {
   const article = document.createElement('article');
   article.className = `message ${message.role}${message.pending ? ' pending' : ''}`;
+  if (message.pending) article.id = 'streaming-message';
   if (message.role === 'user') {
     const column = document.createElement('div');
     column.className = 'user-message-column';
@@ -357,10 +375,8 @@ function createMessageElement(message) {
     body.textContent = message.content;
     const actions = document.createElement('div');
     actions.className = 'message-actions';
-    actions.append(
-      actionButton('Copy message', ['M8 8h11v11H8z', 'M5 16H4V5h11v1'], () => copyMessage(message.content)),
-      actionButton('Edit message', ['M4 20h4l11-11-4-4L4 16v4Z', 'm13.5-13.5 4 4'], () => beginEditMessage(message, body, actions))
-    );
+    actions.appendChild(actionButton('Copy message', ['M8 8h11v11H8z', 'M5 16H4V5h11v1'], () => copyMessage(message.content)));
+    if (!state.readOnly) actions.appendChild(actionButton('Edit message', ['M4 20h4l11-11-4-4L4 16v4Z', 'm13.5-13.5 4 4'], () => beginEditMessage(message, body, actions)));
     column.append(body, actions);
     article.appendChild(column);
   } else {
@@ -371,9 +387,11 @@ function createMessageElement(message) {
     column.className = 'assistant-column';
     const content = document.createElement('div');
     content.className = `message-content${message.pending ? ' typing-cursor' : ''}`;
-    if (message.pending && !message.content) {
+    if (message.pending) {
       const pending = document.createElement('p');
-      pending.textContent = 'Thinking...';
+      pending.className = 'streaming-text';
+      pending.textContent = message.content || 'Thinking...';
+      content.dataset.streamingContent = message.content || '';
       content.appendChild(pending);
     } else {
       renderSafeMarkdown(content, message.content);
@@ -382,10 +400,8 @@ function createMessageElement(message) {
     if (!message.pending) {
       const actions = document.createElement('div');
       actions.className = 'message-actions';
-      actions.append(
-        actionButton('Copy response', ['M8 8h11v11H8z', 'M5 16H4V5h11v1'], () => copyMessage(message.content)),
-        actionButton('Regenerate response', ['M20 7v5h-5', 'M19 12a7 7 0 1 0 1 5'], () => regenerateMessage(message))
-      );
+      actions.appendChild(actionButton('Copy response', ['M8 8h11v11H8z', 'M5 16H4V5h11v1'], () => copyMessage(message.content)));
+      if (!state.readOnly) actions.appendChild(actionButton('Regenerate response', ['M20 7v5h-5', 'M19 12a7 7 0 1 0 1 5'], () => regenerateMessage(message)));
       column.appendChild(actions);
     }
     article.append(mark, column);
@@ -393,10 +409,38 @@ function createMessageElement(message) {
   return article;
 }
 
+function messageFingerprint(items) {
+  return items.map((message) => `${message.id}:${message.content}`).join('|');
+}
+
+function updateStreamingMessage() {
+  if (!isGenerating()) return;
+  const article = document.getElementById('streaming-message');
+  if (!article) return renderMessages();
+  const content = article.querySelector('.message-content');
+  const next = state.generation?.content || '';
+  const previous = content.dataset.streamingContent || '';
+  let text = content.querySelector('.streaming-text');
+  if (!next && !previous) return;
+  if (!text || !previous) {
+    text = document.createElement('p');
+    text.className = 'streaming-text';
+    text.textContent = next;
+    content.replaceChildren(text);
+  } else if (next.startsWith(previous)) {
+    text.appendChild(document.createTextNode(next.slice(previous.length)));
+  } else {
+    text.textContent = next;
+  }
+  content.dataset.streamingContent = next;
+  conversation.scrollTop = conversation.scrollHeight;
+}
+
 function renderMessages() {
   messages.replaceChildren();
   state.messages.forEach((message) => messages.appendChild(createMessageElement(message)));
   if (isGenerating()) messages.appendChild(createMessageElement({ role: 'assistant', content: state.generation?.content || '', pending: true }));
+  state.renderedMessageFingerprint = messageFingerprint(state.messages);
   const hasMessages = state.messages.length > 0 || isGenerating();
   emptyState.hidden = hasMessages;
   messages.hidden = !hasMessages;
@@ -460,9 +504,11 @@ async function refreshActiveChat() {
   if (!state.activeChatId) return;
   try {
     const payload = await api(`/api/chats/${encodeURIComponent(state.activeChatId)}`);
-    state.messages = payload.messages;
     state.generation = payload.generation;
-    renderMessages();
+    const nextFingerprint = messageFingerprint(payload.messages);
+    state.messages = payload.messages;
+    if (nextFingerprint !== state.renderedMessageFingerprint) renderMessages();
+    else updateStreamingMessage();
     setGenerating(isGenerating());
     if (state.generation?.status === 'failed' && state.lastGenerationNotice !== state.generation.id) {
       state.lastGenerationNotice = state.generation.id;
@@ -479,35 +525,68 @@ async function refreshActiveChat() {
   }
 }
 
-async function openChat(chatId) {
+async function openChat(chatId, options = {}) {
   if (chatId === state.activeChatId && state.messages.length) return;
   try {
     clearPoll();
     const payload = await api(`/api/chats/${encodeURIComponent(chatId)}`);
+    setReadOnly(false);
     state.activeChatId = chatId;
+    state.currentChat = payload.chat;
     state.messages = payload.messages;
     state.generation = payload.generation;
     if (state.models.some((model) => model.id === payload.chat.model)) modelSelect.value = payload.chat.model;
     localStorage.setItem('etherking_model', modelSelect.value);
     renderChats();
     renderMessages();
+    shareButton.hidden = false;
+    document.title = `${payload.chat.title} - EtherKing`;
+    const chatUrl = `/chats/${encodeURIComponent(chatId)}`;
+    if (options.replaceHistory) history.replaceState({ chatId }, '', chatUrl);
+    else if (options.updateHistory !== false && window.location.pathname !== chatUrl) history.pushState({ chatId }, '', chatUrl);
     setGenerating(isGenerating());
     schedulePoll();
     setSidebar(false);
     if (!isGenerating()) input.focus();
   } catch (error) {
+    if (options.allowShared) return loadSharedChat(chatId, { replaceHistory: options.replaceHistory });
     showToast(error.message);
   }
 }
 
-function startNewChat() {
+async function loadSharedChat(chatId, options = {}) {
+  try {
+    clearPoll();
+    const payload = await api(`/api/shared/chats/${encodeURIComponent(chatId)}`);
+    setReadOnly(true);
+    state.activeChatId = chatId;
+    state.currentChat = payload.chat;
+    state.messages = payload.messages;
+    state.generation = null;
+    renderMessages();
+    shareButton.hidden = true;
+    document.title = `${payload.chat.title} - EtherKing`;
+    const chatUrl = `/chats/${encodeURIComponent(chatId)}`;
+    if (options.replaceHistory) history.replaceState({ chatId }, '', chatUrl);
+  } catch (error) {
+    showToast(error.message);
+    if (!state.authenticated) window.location.replace('/');
+  }
+}
+
+function startNewChat(updateHistory = true) {
   clearPoll();
+  setReadOnly(false);
   state.activeChatId = null;
+  state.currentChat = null;
   state.messages = [];
   state.generation = null;
   renderChats();
   renderMessages();
   setGenerating(false);
+  shareButton.hidden = true;
+  document.title = 'EtherKing';
+  if (updateHistory && window.location.pathname !== '/app') history.pushState({}, '', '/app');
   setSidebar(false);
   input.focus();
 }
@@ -533,8 +612,11 @@ async function ensureChat() {
     body: JSON.stringify({ model: modelSelect.value })
   });
   state.activeChatId = payload.chat.id;
+  state.currentChat = payload.chat;
   state.chats.unshift(payload.chat);
   renderChats();
+  shareButton.hidden = false;
+  history.pushState({ chatId: payload.chat.id }, '', `/chats/${encodeURIComponent(payload.chat.id)}`);
   return state.activeChatId;
 }
 
@@ -671,14 +753,44 @@ document.getElementById('usage-button').addEventListener('click', async () => {
   }
 });
 
+shareButton.addEventListener('click', async () => {
+  if (!state.activeChatId || state.readOnly) return;
+  try {
+    const payload = await api(`/api/chats/${encodeURIComponent(state.activeChatId)}/share`, { method: 'POST' });
+    state.currentChat = payload.chat;
+    const shareUrl = new URL(payload.url, window.location.origin).href;
+    await navigator.clipboard.writeText(shareUrl);
+    showToast('Share link copied.');
+  } catch (error) {
+    showToast(error.message);
+  }
+});
+
+window.addEventListener('popstate', () => {
+  const chatId = chatIdFromPath();
+  if (chatId) {
+    if (state.authenticated) openChat(chatId, { updateHistory: false, allowShared: true });
+    else loadSharedChat(chatId);
+  } else if (state.authenticated) {
+    startNewChat(false);
+  } else {
+    window.location.replace('/');
+  }
+});
+
 async function initialize() {
   try {
+    const pathChatId = chatIdFromPath();
     const session = await api('/api/session');
-    if (!session.authenticated) return window.location.replace('/');
+    state.authenticated = session.authenticated === true;
+    if (!state.authenticated) {
+      if (pathChatId) return loadSharedChat(pathChatId, { replaceHistory: true });
+      return window.location.replace('/');
+    }
     applyUser(session.user);
     await Promise.all([loadModels(), loadChats()]);
-    renderMessages();
-    input.focus();
+    if (pathChatId) return openChat(pathChatId, { updateHistory: false, replaceHistory: true, allowShared: true });
+    startNewChat(false);
   } catch (error) {
     showToast(error.message);
   }

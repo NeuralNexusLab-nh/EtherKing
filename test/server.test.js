@@ -2,6 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const crypto = require('crypto');
 const fs = require('fs/promises');
 const os = require('os');
 const path = require('path');
@@ -18,12 +19,30 @@ async function withServer(run) {
   });
   try {
     const address = server.address();
-    await run(`http://127.0.0.1:${address.port}`);
+    await run(`http://127.0.0.1:${address.port}`, store);
   } finally {
     await new Promise((resolve) => server.close(resolve));
     await fs.rm(directory, { recursive: true, force: true });
   }
 }
+
+test('serves shared chats at the same read-only chat URL without authentication', async () => {
+  await withServer(async (baseUrl, store) => {
+    const userId = crypto.randomUUID();
+    const chatId = crypto.randomUUID();
+    await store.mutate((data) => {
+      data.chats.push({ id: chatId, userId, title: 'Shared chat', model: 'gpt-5.4-mini', isShared: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+      data.messages.push({ id: crypto.randomUUID(), chatId, userId, role: 'assistant', content: 'Public answer', createdAt: new Date().toISOString() });
+    });
+    const apiResponse = await fetch(`${baseUrl}/api/shared/chats/${chatId}`);
+    assert.equal(apiResponse.status, 200);
+    const payload = await apiResponse.json();
+    assert.equal(payload.readOnly, true);
+    assert.equal(payload.messages[0].content, 'Public answer');
+    const pageResponse = await fetch(`${baseUrl}/chats/${chatId}`, { redirect: 'manual' });
+    assert.equal(pageResponse.status, 200);
+  });
+});
 
 test('serves the account page with strict browser security headers', async () => {
   await withServer(async (baseUrl) => {
@@ -114,18 +133,26 @@ test('shares rolling dual-window point quotas across plans per user and clamps d
   try {
     const store = await new FileStore(path.join(directory, 'store.json')).init();
     const now = Date.UTC(2026, 6, 20, 0, 0, 0);
-    for (let index = 0; index < 20; index += 1) {
+    for (let index = 0; index < 30; index += 1) {
       assert.notEqual(await reserveQuota(store, 'user-a', 'pro', 5, now), null);
     }
     assert.equal(await reserveQuota(store, 'user-a', 'plus', 3, now), null);
     assert.notEqual(await reserveQuota(store, 'user-b', 'basic', 1.5, now), null);
     const usage = await getQuotaUsage(store, 'user-a', now);
     assert.equal(usage.windows.fiveHour.remainingPercent, 0);
-    assert.equal(usage.windows.weekly.remainingPercent, 90);
+    assert.equal(usage.windows.weekly.remainingPercent, 83.3);
 
     const resetUsage = await getQuotaUsage(store, 'user-a', now + (5 * 60 * 60 * 1000) + 1);
     assert.equal(resetUsage.windows.fiveHour.remainingPercent, 100);
-    assert.equal(resetUsage.windows.weekly.remainingPercent, 90);
+    assert.equal(resetUsage.windows.weekly.remainingPercent, 83.3);
+
+    await store.mutate((data) => {
+      data.quotaUsage.push({ userId: 'legacy-user', window: 'fiveHour', remainingPoints: 80, windowStartedAt: new Date(now).toISOString(), resetAt: new Date(now + 1000).toISOString() });
+      data.quotaUsage.push({ userId: 'legacy-user', window: 'weekly', remainingPoints: 900, windowStartedAt: new Date(now).toISOString(), resetAt: new Date(now + 1000).toISOString() });
+    });
+    const migrated = await getQuotaUsage(store, 'legacy-user', now);
+    assert.equal(migrated.windows.fiveHour.remainingPercent, 86.7);
+    assert.equal(migrated.windows.weekly.remainingPercent, 88.9);
   } finally {
     await fs.rm(directory, { recursive: true, force: true });
   }

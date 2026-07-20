@@ -24,6 +24,7 @@ test('registers every requested Ollama model', () => {
     'gpt-oss:120b'
   ]) {
     assert.equal(MODEL_REGISTRY[id].provider, 'Ollama');
+    assert.equal(MODEL_REGISTRY[id].plan, 'plus');
   }
 });
 

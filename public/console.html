@@ -14,7 +14,9 @@
   <aside id="sidebar" class="sidebar" aria-label="Conversation history">
     <div class="sidebar-top">
       <a class="brand compact-brand" href="/app" aria-label="EtherKing home">
-        <span class="brand-mark" aria-hidden="true">E</span>
+        <span class="brand-logo" aria-hidden="true">
+          <svg viewBox="0 0 32 32"><path class="logo-frame" d="M16 2.5 28 9.3v13.4L16 29.5 4 22.7V9.3L16 2.5Z"/><path class="logo-core" d="m17.8 7.5-8 10.2h5.4l-1 6.8 8-10.2h-5.4l1-6.8Z"/></svg>
+        </span>
         <span>EtherKing</span>
       </a>
       <button id="close-sidebar" class="icon-button mobile-only" type="button" aria-label="Close sidebar">
@@ -52,6 +54,9 @@
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg>
       </label>
       <div class="header-actions">
+        <button id="share-button" class="icon-button" type="button" aria-label="Share chat" title="Share chat" hidden>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="m8.2 10.8 7.6-4.5M8.2 13.2l7.6 4.5"/></svg>
+        </button>
         <button id="usage-button" class="text-button" type="button">Usage</button>
         <button class="icon-button theme-toggle" type="button" aria-label="Toggle color theme" title="Toggle theme">
           <svg class="sun-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4V2m0 20v-2M4 12H2m20 0h-2M5.64 5.64 4.22 4.22m15.56 15.56-1.42-1.42m0-12.72 1.42-1.42M4.22 19.78l1.42-1.42M12 7a5 5 0 1 0 0 10 5 5 0 0 0 0-10Z"/></svg>

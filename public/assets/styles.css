@@ -276,6 +276,10 @@ html[data-theme="light"] .moon-icon { display: block; }
 
 .compact-brand { font-size: 16px; }
 .compact-brand .brand-mark { width: 28px; height: 28px; flex-basis: 28px; font-size: 13px; }
+.brand-logo { display: inline-grid; width: 30px; height: 30px; flex: 0 0 30px; place-items: center; border-radius: 9px; background: #101114; box-shadow: 0 5px 16px rgba(0, 0, 0, 0.24), inset 0 0 0 1px rgba(255, 255, 255, 0.11); }
+.brand-logo svg { width: 25px; height: 25px; overflow: visible; }
+.brand-logo .logo-frame { fill: #6d5dfc; stroke: #a99fff; stroke-width: 1; }
+.brand-logo .logo-core { fill: #ffffff; filter: drop-shadow(0 0 3px rgba(255, 255, 255, 0.55)); }
 
 .new-chat-button {
   display: flex;
@@ -528,6 +532,16 @@ html[data-theme="light"] .moon-icon { display: block; }
 }
 .message-action:hover { background: var(--surface-hover); color: var(--text); }
 .message-action svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+body.shared-view .sidebar,
+body.shared-view .composer-area,
+body.shared-view .model-picker,
+body.shared-view #open-sidebar,
+body.shared-view #usage-button,
+body.shared-view #share-button { display: none; }
+body.shared-view .chat-shell { margin-left: 0; }
+body.shared-view .chat-header { justify-content: flex-end; }
+body.shared-view .conversation { padding-bottom: 60px; }
 .message-editor { width: min(100%, 620px); min-height: 110px; padding: 12px; resize: vertical; border: 1px solid var(--border); border-radius: 12px; outline: 0; background: var(--input); color: var(--text); }
 .message-editor:focus { border-color: var(--focus); }
 .message-edit-controls { display: flex; margin-top: 9px; justify-content: flex-end; gap: 8px; }
