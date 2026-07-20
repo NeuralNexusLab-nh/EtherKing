@@ -47,7 +47,7 @@ async function submitAuth(form, endpoint) {
   const button = form.querySelector('button[type="submit"]');
   const originalText = button.textContent;
   button.disabled = true;
-  button.textContent = 'Please wait??;
+  button.textContent = 'Please wait...';
   try {
     const data = Object.fromEntries(new FormData(form).entries());
     const response = await fetch(endpoint, {
