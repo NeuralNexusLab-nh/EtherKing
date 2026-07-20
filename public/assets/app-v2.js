@@ -112,14 +112,17 @@ input.addEventListener('keydown', (event) => {
 });
 
 function appendInlineMarkdown(container, source) {
-  const pattern = /(`[^`\n]+`|\*\*[^*\n]+\*\*|__[^_\n]+__|\*[^*\n]+\*|_[^_\n]+_)/g;
+  const pattern = /(``[^\n]+?``|`[^`\n]+`|\*\*[^*\n]+\*\*|__[^_\n]+__|\*[^*\n]+\*|_[^_\n]+_)/g;
   let cursor = 0;
   let match;
   while ((match = pattern.exec(source))) {
     if (match.index > cursor) container.appendChild(document.createTextNode(source.slice(cursor, match.index)));
     const token = match[0];
     let element;
-    if (token.startsWith('`')) {
+    if (token.startsWith('``')) {
+      element = document.createElement('code');
+      element.textContent = token.slice(2, -2);
+    } else if (token.startsWith('`')) {
       element = document.createElement('code');
       element.textContent = token.slice(1, -1);
     } else if (token.startsWith('**') || token.startsWith('__')) {
@@ -135,6 +138,46 @@ function appendInlineMarkdown(container, source) {
   if (cursor < source.length) container.appendChild(document.createTextNode(source.slice(cursor)));
 }
 
+function appendHighlightedCode(container, source) {
+  const pattern = /(\/\/[^\n]*|#[^\n]*|\/\*[\s\S]*?\*\/|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`|\b(?:async|await|break|case|catch|class|const|continue|def|else|export|false|finally|for|from|function|if|import|in|let|new|null|print|return|switch|throw|true|try|undefined|var|while)\b|\b\d+(?:\.\d+)?\b)/g;
+  let cursor = 0;
+  let match;
+  while ((match = pattern.exec(source))) {
+    if (match.index > cursor) container.appendChild(document.createTextNode(source.slice(cursor, match.index)));
+    const token = match[0];
+    const span = document.createElement('span');
+    if (token.startsWith('//') || token.startsWith('#') || token.startsWith('/*')) span.className = 'code-comment';
+    else if (/^["'`]/.test(token)) span.className = 'code-string';
+    else if (/^\d/.test(token)) span.className = 'code-number';
+    else span.className = 'code-keyword';
+    span.textContent = token;
+    container.appendChild(span);
+    cursor = match.index + token.length;
+  }
+  if (cursor < source.length) container.appendChild(document.createTextNode(source.slice(cursor)));
+}
+
+function appendCodeBlock(container, source, language) {
+  const block = document.createElement('div');
+  block.className = 'code-block';
+  const toolbar = document.createElement('div');
+  toolbar.className = 'code-toolbar';
+  const label = document.createElement('span');
+  label.textContent = language || 'Code';
+  const copy = document.createElement('button');
+  copy.type = 'button';
+  copy.className = 'code-copy-button';
+  copy.textContent = 'Copy';
+  copy.addEventListener('click', () => copyMessage(source));
+  toolbar.append(label, copy);
+  const pre = document.createElement('pre');
+  const code = document.createElement('code');
+  appendHighlightedCode(code, source);
+  pre.appendChild(code);
+  block.append(toolbar, pre);
+  container.appendChild(block);
+}
+
 function renderSafeMarkdown(container, content) {
   container.replaceChildren();
   const lines = String(content || '').replace(/\r\n?/g, '\n').split('\n');
@@ -145,23 +188,15 @@ function renderSafeMarkdown(container, content) {
       index += 1;
       continue;
     }
-    if (line.trimStart().startsWith('```')) {
-      const language = line.trim().slice(3).trim().slice(0, 30);
+    const openingFence = /^\s*(`{3,}|~{3,})([^`]*)$/.exec(line);
+    if (openingFence) {
+      const fence = openingFence[1];
+      const language = openingFence[2].trim().slice(0, 30);
       const codeLines = [];
       index += 1;
-      while (index < lines.length && !lines[index].trimStart().startsWith('```')) codeLines.push(lines[index++]);
+      while (index < lines.length && !lines[index].trimStart().startsWith(fence)) codeLines.push(lines[index++]);
       if (index < lines.length) index += 1;
-      if (language) {
-        const label = document.createElement('div');
-        label.className = 'code-label';
-        label.textContent = language;
-        container.appendChild(label);
-      }
-      const pre = document.createElement('pre');
-      const code = document.createElement('code');
-      code.textContent = codeLines.join('\n');
-      pre.appendChild(code);
-      container.appendChild(pre);
+      appendCodeBlock(container, codeLines.join('\n'), language);
       continue;
     }
     const heading = /^(#{1,6})\s+(.+)$/.exec(line);
@@ -336,7 +371,7 @@ function createMessageElement(message) {
     column.className = 'assistant-column';
     const content = document.createElement('div');
     content.className = `message-content${message.pending ? ' typing-cursor' : ''}`;
-    if (message.pending) {
+    if (message.pending && !message.content) {
       const pending = document.createElement('p');
       pending.textContent = 'Thinking...';
       content.appendChild(pending);
@@ -361,7 +396,7 @@ function createMessageElement(message) {
 function renderMessages() {
   messages.replaceChildren();
   state.messages.forEach((message) => messages.appendChild(createMessageElement(message)));
-  if (isGenerating()) messages.appendChild(createMessageElement({ role: 'assistant', content: '', pending: true }));
+  if (isGenerating()) messages.appendChild(createMessageElement({ role: 'assistant', content: state.generation?.content || '', pending: true }));
   const hasMessages = state.messages.length > 0 || isGenerating();
   emptyState.hidden = hasMessages;
   messages.hidden = !hasMessages;
@@ -418,7 +453,7 @@ function clearPoll() {
 function schedulePoll() {
   clearPoll();
   if (!state.activeChatId || !isGenerating()) return;
-  state.pollTimer = setTimeout(refreshActiveChat, 1200);
+  state.pollTimer = setTimeout(refreshActiveChat, 500);
 }
 
 async function refreshActiveChat() {

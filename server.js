@@ -158,6 +158,8 @@ function serializeGeneration(job) {
     id: job.id,
     status: job.status,
     model: job.model,
+    content: typeof job.content === 'string' ? job.content : '',
+    isDone: job.isDone === true || ['completed', 'failed'].includes(job.status),
     error: job.status === 'failed' ? job.error || 'Generation failed.' : null,
     created_at: job.createdAt,
     updated_at: job.updatedAt
@@ -178,6 +180,7 @@ async function processGeneration(store, jobId) {
   let job;
   let config;
   let cost;
+  let assistantText = '';
   try {
     job = await store.mutate((data) => {
       const item = data.generationJobs.find((candidate) => candidate.id === jobId && candidate.status === 'queued');
@@ -194,7 +197,7 @@ async function processGeneration(store, jobId) {
       const userIndex = ordered.findIndex((message) => message.id === job.userMessageId);
       return ordered.slice(0, userIndex + 1).slice(-24).map((message) => ({ role: message.role, content: message.content }));
     });
-    let assistantText = '';
+    let persistPartial = Promise.resolve();
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), PROVIDER_TIMEOUT_MS);
     try {
@@ -203,7 +206,16 @@ async function processGeneration(store, jobId) {
           throw new Error('Provider output exceeded the safety limit.');
         }
         assistantText += text;
+        const partialContent = assistantText;
+        persistPartial = persistPartial.then(() => store.mutate((data) => {
+          const item = data.generationJobs.find((candidate) => candidate.id === jobId);
+          if (!item || !['queued', 'in_progress'].includes(item.status)) return;
+          item.content = partialContent;
+          item.isDone = false;
+          item.updatedAt = new Date().toISOString();
+        }));
       }, { signal: controller.signal });
+      await persistPartial;
     } finally {
       clearTimeout(timeout);
     }
@@ -245,6 +257,8 @@ async function processGeneration(store, jobId) {
         chat.updatedAt = now;
       }
       item.status = 'completed';
+      item.content = assistantText;
+      item.isDone = true;
       item.updatedAt = now;
       delete item.error;
     });
@@ -257,6 +271,8 @@ async function processGeneration(store, jobId) {
         const item = data.generationJobs.find((candidate) => candidate.id === jobId);
         if (!item) return;
         item.status = 'failed';
+        item.content = assistantText;
+        item.isDone = true;
         item.error = error.code === 'PROVIDER_NOT_CONFIGURED' ? error.message : 'The model could not complete this response.';
         item.updatedAt = new Date().toISOString();
       }).catch(() => {});
@@ -304,6 +320,8 @@ async function queueGeneration(store, { userId, chatId, model, prepare }) {
         plan: config.plan,
         cost,
         status: 'queued',
+        content: '',
+        isDone: false,
         createdAt: now,
         updatedAt: now
       };
@@ -768,6 +786,7 @@ async function start() {
       for (const job of data.generationJobs) {
         if (!interruptedIds.has(job.id)) continue;
         job.status = 'failed';
+        job.isDone = true;
         job.error = 'Generation was interrupted by a server restart. Please regenerate the response.';
         job.updatedAt = new Date().toISOString();
       }
