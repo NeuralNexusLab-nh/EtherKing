@@ -42,6 +42,8 @@ test('background generation finishes and persists after the enqueue response is 
       }
     });
     assert.equal(queued.job.status, 'queued');
+    assert.equal(queued.job.content, '');
+    assert.equal(queued.job.isDone, false);
 
     const deadline = Date.now() + 2000;
     let status;
@@ -53,6 +55,9 @@ test('background generation finishes and persists after the enqueue response is 
 
     assert.equal(status, 'completed');
     assert.equal(store.read((data) => data.messages.find((message) => message.role === 'assistant')?.content), 'Background reply');
+    const completedJob = store.read((data) => data.generationJobs.find((job) => job.id === queued.job.id));
+    assert.equal(completedJob.content, 'Background reply');
+    assert.equal(completedJob.isDone, true);
   } finally {
     global.fetch = originalFetch;
     if (originalKey === undefined) delete process.env.OAAPI;
