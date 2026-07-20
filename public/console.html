@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="dark light">
   <title>EtherKing</title>
   <link rel="stylesheet" href="/assets/styles.css">
-  <script src="/assets/app.js" defer></script>
+  <script src="/assets/app-v2.js" defer></script>
 </head>
 <body class="app-page">
   <div id="mobile-overlay" class="mobile-overlay" hidden></div>
@@ -73,7 +73,6 @@
         <textarea id="message-input" rows="1" maxlength="20000" placeholder="Message EtherKing" aria-label="Message EtherKing" required></textarea>
         <button id="send-button" class="send-button" type="submit" aria-label="Send message" disabled>
           <svg class="send-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5m-6 6 6-6 6 6"/></svg>
-          <svg class="stop-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="1"/></svg>
         </button>
       </form>
       <p class="composer-note">EtherKing can make mistakes. Check important information.</p>
@@ -115,7 +114,7 @@
   <dialog id="usage-dialog" class="dialog small-dialog">
     <form method="dialog" class="dialog-card">
       <div class="dialog-header">
-        <div><h2>Daily usage</h2><p>Limits reset daily in UTC.</p></div>
+        <div><h2>Usage limits</h2><p>Each plan has a rolling 5-hour and weekly limit.</p></div>
         <button class="icon-button" value="cancel" aria-label="Close">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>
         </button>
