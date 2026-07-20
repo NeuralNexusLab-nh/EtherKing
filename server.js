@@ -537,8 +537,7 @@ function createApp(store) {
 
   app.get('/api/usage', ...requireAuth, async (req, res, next) => {
     try {
-      const plans = Object.values(MODEL_REGISTRY).map((config) => config.plan);
-      const usage = await getQuotaUsage(store, req.session.userId, plans);
+      const usage = await getQuotaUsage(store, req.session.userId);
       res.json({ usage });
     } catch (error) {
       next(error);

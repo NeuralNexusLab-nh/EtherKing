@@ -623,24 +623,13 @@ document.getElementById('usage-button').addEventListener('click', async () => {
     const payload = await api('/api/usage');
     const usageList = document.getElementById('usage-list');
     usageList.replaceChildren();
-    const order = { pro: 0, plus: 1, basic: 2 };
-    payload.usage.sort((a, b) => order[a.plan] - order[b.plan]).forEach((item) => {
-      const card = document.createElement('section');
-      card.className = 'usage-item';
-      const heading = document.createElement('div');
-      heading.className = 'usage-plan-heading';
-      const name = document.createElement('strong');
-      name.textContent = item.plan[0].toUpperCase() + item.plan.slice(1);
-      const cost = document.createElement('span');
-      cost.textContent = `${item.cost} points per response`;
-      heading.append(name, cost);
-      card.append(
-        heading,
-        usageWindow('5-hour limit', item.windows.fiveHour),
-        usageWindow('Weekly limit', item.windows.weekly)
-      );
-      usageList.appendChild(card);
-    });
+    const card = document.createElement('section');
+    card.className = 'usage-item';
+    card.append(
+      usageWindow('5-hour limit', payload.usage.windows.fiveHour),
+      usageWindow('Weekly limit', payload.usage.windows.weekly)
+    );
+    usageList.appendChild(card);
     usageDialog.showModal();
   } catch (error) {
     showToast(error.message);
