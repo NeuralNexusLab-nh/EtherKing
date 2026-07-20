@@ -109,22 +109,23 @@ test('registers a user and persists an authenticated chat', async () => {
   });
 });
 
-test('keeps rolling dual-window point quotas separate per user and clamps display at zero', async () => {
+test('shares rolling dual-window point quotas across plans per user and clamps display at zero', async () => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'etherking-quota-'));
   try {
     const store = await new FileStore(path.join(directory, 'store.json')).init();
     const now = Date.UTC(2026, 6, 20, 0, 0, 0);
-    for (let index = 0; index < 67; index += 1) {
-      assert.notEqual(await reserveQuota(store, 'user-a', 'basic', 1.5, now), null);
+    for (let index = 0; index < 20; index += 1) {
+      assert.notEqual(await reserveQuota(store, 'user-a', 'pro', 5, now), null);
     }
-    assert.equal(await reserveQuota(store, 'user-a', 'basic', 1.5, now), null);
+    assert.equal(await reserveQuota(store, 'user-a', 'plus', 3, now), null);
     assert.notEqual(await reserveQuota(store, 'user-b', 'basic', 1.5, now), null);
-    const usage = await getQuotaUsage(store, 'user-a', ['basic'], now);
-    assert.equal(usage[0].windows.fiveHour.remainingPercent, 0);
-    assert.ok(usage[0].windows.weekly.remainingPercent > 0);
+    const usage = await getQuotaUsage(store, 'user-a', now);
+    assert.equal(usage.windows.fiveHour.remainingPercent, 0);
+    assert.equal(usage.windows.weekly.remainingPercent, 90);
 
-    const resetUsage = await getQuotaUsage(store, 'user-a', ['basic'], now + (5 * 60 * 60 * 1000) + 1);
-    assert.equal(resetUsage[0].windows.fiveHour.remainingPercent, 100);
+    const resetUsage = await getQuotaUsage(store, 'user-a', now + (5 * 60 * 60 * 1000) + 1);
+    assert.equal(resetUsage.windows.fiveHour.remainingPercent, 100);
+    assert.equal(resetUsage.windows.weekly.remainingPercent, 90);
   } finally {
     await fs.rm(directory, { recursive: true, force: true });
   }

@@ -423,6 +423,22 @@ html[data-theme="light"] .moon-icon { display: block; }
 .model-picker select:hover { background: var(--surface-hover); }
 .model-picker select option,
 .model-picker select optgroup { background: var(--select-bg); color: var(--text); }
+html[data-theme="dark"] .model-picker select {
+  color-scheme: dark;
+  background-color: #171717;
+  color: #f7f7f8;
+}
+html[data-theme="dark"] .model-picker select:hover,
+html[data-theme="dark"] .model-picker select:focus {
+  background-color: #212121;
+  color: #ffffff;
+}
+html[data-theme="dark"] .model-picker select option,
+html[data-theme="dark"] .model-picker select optgroup,
+html[data-theme="dark"] .model-picker select option:checked {
+  background-color: #171717;
+  color: #ffffff;
+}
 .model-picker svg { position: absolute; right: 10px; width: 16px; pointer-events: none; fill: none; stroke: currentColor; stroke-width: 1.8; }
 
 .header-actions { display: flex; align-items: center; gap: 3px; }

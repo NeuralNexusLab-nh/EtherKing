@@ -17,7 +17,7 @@ EtherKing is an account-based, multi-model chat application with server-persiste
 
 Runtime data is written to `data/store.json`. The payload is Base64-obfuscated so the file is not immediately human-readable, but it is **not encrypted** and must not be treated as encrypted storage.
 
-Writes are serialized and use a temporary file plus rename to avoid leaving a partially written store. The `data/` directory is excluded from Git.
+Writes are serialized and use a temporary file plus rename to avoid leaving a partially written store. Keep the `data/` directory out of version control.
 
 This storage mode is intended for one application process on a host with a persistent filesystem. Do not run multiple EtherKing instances against the same file. Back up `data/store.json` before upgrades or host migrations.
 
@@ -31,7 +31,6 @@ This storage mode is intended for one application process on a host with a persi
 ## Setup
 
 ```bash
-cp .env.example .env
 npm install
 npm test
 npm start
