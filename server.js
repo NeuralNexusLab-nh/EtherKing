@@ -19,7 +19,7 @@ const {
   verifyPassword
 } = require('./lib/security');
 const { MODEL_REGISTRY, apiKeyFor, generateShortTitle, streamProviderText } = require('./lib/providers');
-const { PLAN_COSTS, getQuotaUsage, releaseQuota, reserveQuota } = require('./lib/quota');
+const { PLAN_COSTS, chargeQuota, getQuotaUsage, releaseQuota, reserveQuota } = require('./lib/quota');
 
 const PORT = Number(process.env.PORT || 3000);
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -177,10 +177,15 @@ function activeGeneration(data, chatId, userId) {
   return data.generationJobs.find((job) => job.chatId === chatId && job.userId === userId && ['queued', 'in_progress'].includes(job.status));
 }
 
+function textLength(value) {
+  return Array.from(String(value || '')).length;
+}
+
 async function processGeneration(store, jobId) {
   let job;
   let config;
-  let cost;
+  let multiplier;
+  let currentQuestion = '';
   let assistantText = '';
   try {
     job = await store.mutate((data) => {
@@ -192,12 +197,13 @@ async function processGeneration(store, jobId) {
     });
     if (!job) return;
     config = MODEL_REGISTRY[job.model];
-    cost = PLAN_COSTS[config.plan];
+    multiplier = PLAN_COSTS[config.plan];
     const history = store.read((data) => {
       const ordered = sortedChatMessages(data, job.chatId, job.userId);
       const userIndex = ordered.findIndex((message) => message.id === job.userMessageId);
       return ordered.slice(0, userIndex + 1).slice(-24).map((message) => ({ role: message.role, content: message.content }));
     });
+    currentQuestion = history[history.length - 1]?.content || '';
     let persistPartial = Promise.resolve();
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), PROVIDER_TIMEOUT_MS);
@@ -243,6 +249,9 @@ async function processGeneration(store, jobId) {
       const item = data.generationJobs.find((candidate) => candidate.id === jobId);
       if (!item) return;
       const now = new Date().toISOString();
+      const lengthUnits = textLength(currentQuestion) + textLength(assistantText);
+      const chargedPoints = lengthUnits * multiplier;
+      chargeQuota(data, job.userId, chargedPoints, Date.parse(now));
       data.messages.push({
         id: crypto.randomUUID(),
         chatId: job.chatId,
@@ -260,13 +269,13 @@ async function processGeneration(store, jobId) {
       item.status = 'completed';
       item.content = assistantText;
       item.isDone = true;
+      item.lengthUnits = lengthUnits;
+      item.multiplier = multiplier;
+      item.chargedPoints = chargedPoints;
       item.updatedAt = now;
       delete item.error;
     });
   } catch (error) {
-    if (job && config && cost) {
-      try { await releaseQuota(store, job.userId, config.plan, cost); } catch {}
-    }
     if (job) {
       await store.mutate((data) => {
         const item = data.generationJobs.find((candidate) => candidate.id === jobId);
@@ -294,10 +303,10 @@ async function queueGeneration(store, { userId, chatId, model, prepare }) {
     error.code = 'PROVIDER_NOT_CONFIGURED';
     throw error;
   }
-  const cost = PLAN_COSTS[config.plan];
-  const quota = await reserveQuota(store, userId, config.plan, cost);
+  const multiplier = PLAN_COSTS[config.plan];
+  const quota = await reserveQuota(store, userId, config.plan);
   if (!quota) {
-    const error = new Error('A usage limit for this plan has been reached.');
+    const error = new Error('A usage limit has been reached.');
     error.code = 'QUOTA_EXHAUSTED';
     throw error;
   }
@@ -319,7 +328,7 @@ async function queueGeneration(store, { userId, chatId, model, prepare }) {
         userMessageId: userMessage.id,
         model,
         plan: config.plan,
-        cost,
+        multiplier,
         status: 'queued',
         content: '',
         isDone: false,
@@ -339,7 +348,6 @@ async function queueGeneration(store, { userId, chatId, model, prepare }) {
     setImmediate(() => processGeneration(store, result.job.id));
     return { ...result, quota };
   } catch (error) {
-    await releaseQuota(store, userId, config.plan, cost).catch(() => {});
     throw error;
   }
 }
@@ -816,7 +824,7 @@ async function start() {
   const store = await new FileStore(DATA_FILE).init();
   const interruptedJobs = store.read((data) => data.generationJobs.filter((job) => ['queued', 'in_progress'].includes(job.status)));
   for (const job of interruptedJobs) {
-    await releaseQuota(store, job.userId, job.plan, job.cost).catch(() => {});
+    if (Number.isFinite(job.cost)) await releaseQuota(store, job.userId, job.plan, job.cost).catch(() => {});
   }
   if (interruptedJobs.length) {
     const interruptedIds = new Set(interruptedJobs.map((job) => job.id));

@@ -48,9 +48,22 @@ test('uses gpt-5.4-nano for concise generated chat titles', async () => {
   }
 });
 
-test('preserves the requested B, C, and D plan migration', () => {
-  assert.equal(MODEL_REGISTRY['gpt-5.4-mini'].plan, 'pro');
+test('assigns full GPT and DeepSeek Pro models to Pro', () => {
+  for (const id of ['deepseek-v4-pro', 'gpt-4o', 'gpt-4.1', 'gpt-5', 'gpt-5.1', 'gpt-5.2', 'gpt-5.4']) {
+    assert.equal(MODEL_REGISTRY[id].plan, 'pro');
+  }
+});
+
+test('assigns DeepSeek Flash and Ollama models to Plus', () => {
   assert.equal(MODEL_REGISTRY['deepseek-v4-flash'].plan, 'plus');
-  assert.equal(MODEL_REGISTRY['gpt-5.4'].plan, 'basic');
+  for (const [id, config] of Object.entries(MODEL_REGISTRY)) {
+    if (config.provider === 'Ollama') assert.equal(config.plan, 'plus', id);
+  }
+});
+
+test('assigns GPT mini and nano models to Basic', () => {
+  for (const id of ['gpt-5-nano', 'gpt-4o-mini', 'gpt-4.1-nano', 'gpt-5-mini', 'o4-mini', 'gpt-5.4-nano', 'gpt-5.4-mini']) {
+    assert.equal(MODEL_REGISTRY[id].plan, 'basic');
+  }
 });
 

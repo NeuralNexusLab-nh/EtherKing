@@ -7,6 +7,7 @@ const fs = require('fs/promises');
 const os = require('os');
 const path = require('path');
 const { FileStore } = require('../lib/storage');
+const { QUOTA_WINDOWS } = require('../lib/quota');
 const { queueGeneration } = require('../server');
 
 test('background generation finishes and persists after the enqueue response is returned', async () => {
@@ -56,8 +57,15 @@ test('background generation finishes and persists after the enqueue response is 
     assert.equal(status, 'completed');
     assert.equal(store.read((data) => data.messages.find((message) => message.role === 'assistant')?.content), 'Background reply');
     const completedJob = store.read((data) => data.generationJobs.find((job) => job.id === queued.job.id));
+    const expectedLength = Array.from('Run in the background').length + Array.from('Background reply').length;
     assert.equal(completedJob.content, 'Background reply');
     assert.equal(completedJob.isDone, true);
+    assert.equal(completedJob.lengthUnits, expectedLength);
+    assert.equal(completedJob.multiplier, 1);
+    assert.equal(completedJob.chargedPoints, expectedLength);
+    const quota = store.read((data) => data.quotaUsage.filter((item) => item.userId === userId));
+    assert.equal(quota.find((item) => item.window === 'fiveHour').remainingPoints, QUOTA_WINDOWS.fiveHour.capacity - expectedLength);
+    assert.equal(quota.find((item) => item.window === 'weekly').remainingPoints, QUOTA_WINDOWS.weekly.capacity - expectedLength);
   } finally {
     global.fetch = originalFetch;
     if (originalKey === undefined) delete process.env.OAAPI;
