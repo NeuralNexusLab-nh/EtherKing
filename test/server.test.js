@@ -7,8 +7,8 @@ const fs = require('fs/promises');
 const os = require('os');
 const path = require('path');
 const { FileStore } = require('../lib/storage');
-const { createApp, reserveQuota } = require('../server');
-const { getQuotaUsage } = require('../lib/quota');
+const { createApp } = require('../server');
+const { chargeQuota, getQuotaUsage, QUOTA_WINDOWS, reserveQuota } = require('../lib/quota');
 
 async function withServer(run) {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'etherking-http-'));
@@ -133,18 +133,28 @@ test('shares rolling dual-window point quotas across plans per user and clamps d
   try {
     const store = await new FileStore(path.join(directory, 'store.json')).init();
     const now = Date.UTC(2026, 6, 20, 0, 0, 0);
-    for (let index = 0; index < 20; index += 1) {
-      assert.notEqual(await reserveQuota(store, 'user-a', 'pro', 5, now), null);
-    }
-    assert.equal(await reserveQuota(store, 'user-a', 'plus', 3, now), null);
-    assert.notEqual(await reserveQuota(store, 'user-b', 'basic', 1.5, now), null);
+    assert.notEqual(await reserveQuota(store, 'user-a', 'pro', undefined, now), null);
+    await store.mutate((data) => chargeQuota(data, 'user-a', QUOTA_WINDOWS.fiveHour.capacity, now));
+    assert.equal(await reserveQuota(store, 'user-a', 'plus', undefined, now), null);
+    assert.notEqual(await reserveQuota(store, 'user-b', 'basic', undefined, now), null);
     const usage = await getQuotaUsage(store, 'user-a', now);
     assert.equal(usage.windows.fiveHour.remainingPercent, 0);
-    assert.equal(usage.windows.weekly.remainingPercent, 90);
+    assert.equal(usage.windows.weekly.remainingPercent, 87.5);
 
     const resetUsage = await getQuotaUsage(store, 'user-a', now + (5 * 60 * 60 * 1000) + 1);
     assert.equal(resetUsage.windows.fiveHour.remainingPercent, 100);
-    assert.equal(resetUsage.windows.weekly.remainingPercent, 90);
+    assert.equal(resetUsage.windows.weekly.remainingPercent, 87.5);
+
+    await store.mutate((data) => {
+      data.quotaUsage.push({ userId: 'legacy-user', window: 'fiveHour', remainingPoints: 80, windowStartedAt: new Date(now).toISOString(), resetAt: new Date(now + 1000).toISOString() });
+      data.quotaUsage.push({ userId: 'legacy-user', window: 'weekly', remainingPoints: 900, windowStartedAt: new Date(now).toISOString(), resetAt: new Date(now + 1000).toISOString() });
+    });
+    const migrated = await getQuotaUsage(store, 'legacy-user', now);
+    const migratedRecords = store.read((data) => data.quotaUsage.filter((item) => item.userId === 'legacy-user'));
+    assert.equal(migratedRecords.find((item) => item.window === 'fiveHour').remainingPoints, QUOTA_WINDOWS.fiveHour.capacity - 20);
+    assert.equal(migratedRecords.find((item) => item.window === 'weekly').remainingPoints, QUOTA_WINDOWS.weekly.capacity - 100);
+    assert.equal(migrated.windows.fiveHour.remainingPercent, 100);
+    assert.equal(migrated.windows.weekly.remainingPercent, 100);
   } finally {
     await fs.rm(directory, { recursive: true, force: true });
   }
