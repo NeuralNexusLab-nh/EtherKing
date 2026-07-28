@@ -43,14 +43,7 @@ function setReadOnly(value) {
   if (value) clearPoll();
 }
 
-function setTheme(theme) {
-  const value = theme === 'light' ? 'light' : 'dark';
-  root.dataset.theme = value;
-  localStorage.setItem('etherking_theme', value);
-}
-
-setTheme(localStorage.getItem('etherking_theme') || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'));
-document.querySelectorAll('.theme-toggle').forEach((button) => button.addEventListener('click', () => setTheme(root.dataset.theme === 'dark' ? 'light' : 'dark')));
+root.dataset.theme = 'light';
 
 function getCookie(name) {
   const prefix = `${encodeURIComponent(name)}=`;
@@ -797,4 +790,3 @@ async function initialize() {
 }
 
 initialize();
-
