@@ -9,14 +9,7 @@ const alertBox = document.getElementById('auth-alert');
 const title = document.getElementById('auth-title');
 const subtitle = document.getElementById('auth-subtitle');
 
-function setTheme(theme) {
-  const value = theme === 'light' ? 'light' : 'dark';
-  root.dataset.theme = value;
-  localStorage.setItem('etherking_theme', value);
-}
-
-setTheme(localStorage.getItem('etherking_theme') || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'));
-document.querySelector('.theme-toggle').addEventListener('click', () => setTheme(root.dataset.theme === 'dark' ? 'light' : 'dark'));
+root.dataset.theme = 'light';
 
 function setMode(mode) {
   const registering = mode === 'register';
@@ -84,4 +77,3 @@ fetch('/api/session', { credentials: 'same-origin', cache: 'no-store' })
     if (session?.authenticated) window.location.replace('/app');
   })
   .catch(() => {});
-
