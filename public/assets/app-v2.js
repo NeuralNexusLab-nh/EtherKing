@@ -38,6 +38,11 @@ function chatIdFromPath() {
   return match ? match[1] : null;
 }
 
+function shareIdFromPath() {
+  const match = /^\/share\/([A-Za-z0-9_-]{24})$/.exec(window.location.pathname);
+  return match ? match[1] : null;
+}
+
 function setReadOnly(value) {
   state.readOnly = value;
   document.body.classList.toggle('shared-view', value);
@@ -561,6 +566,7 @@ async function openChat(chatId, options = {}) {
     renderChats();
     renderMessages();
     shareButton.hidden = false;
+    shareButton.classList.toggle('is-shared', payload.chat.isShared === true);
     document.title = `${payload.chat.title} - EtherKing`;
     const chatUrl = `/chats/${encodeURIComponent(chatId)}`;
     if (options.replaceHistory) history.replaceState({ chatId }, '', chatUrl);
@@ -570,25 +576,24 @@ async function openChat(chatId, options = {}) {
     setSidebar(false);
     if (!isGenerating()) input.focus();
   } catch (error) {
-    if (options.allowShared) return loadSharedChat(chatId, { replaceHistory: options.replaceHistory });
     showToast(error.message);
   }
 }
 
-async function loadSharedChat(chatId, options = {}) {
+async function loadSharedChat(shareId, options = {}) {
   try {
     clearPoll();
-    const payload = await api(`/api/shared/chats/${encodeURIComponent(chatId)}`);
+    const payload = await api(`/api/shared/chats/${encodeURIComponent(shareId)}`);
     setReadOnly(true);
-    state.activeChatId = chatId;
+    state.activeChatId = null;
     state.currentChat = payload.chat;
     state.messages = payload.messages;
     state.generation = null;
     renderMessages();
     shareButton.hidden = true;
     document.title = `${payload.chat.title} - EtherKing`;
-    const chatUrl = `/chats/${encodeURIComponent(chatId)}`;
-    if (options.replaceHistory) history.replaceState({ chatId }, '', chatUrl);
+    const shareUrl = `/share/${encodeURIComponent(shareId)}`;
+    if (options.replaceHistory) history.replaceState({ shareId }, '', shareUrl);
   } catch (error) {
     showToast(error.message);
     if (!state.authenticated) window.location.replace('/');
@@ -607,6 +612,7 @@ function startNewChat(updateHistory = true) {
   renderMessages();
   setGenerating(false);
   shareButton.hidden = true;
+  shareButton.classList.remove('is-shared');
   document.title = 'EtherKing';
   if (updateHistory && window.location.pathname !== '/app') history.pushState({}, '', '/app');
   setSidebar(false);
@@ -648,6 +654,7 @@ async function sendMessage(content) {
       state.currentChat = payload.chat;
       state.chats.unshift(payload.chat);
       shareButton.hidden = false;
+      shareButton.classList.remove('is-shared');
       history.pushState({ chatId: payload.chat.id }, '', `/chats/${encodeURIComponent(payload.chat.id)}`);
       renderChats();
     }
@@ -801,6 +808,7 @@ shareButton.addEventListener('click', async () => {
   try {
     const payload = await api(`/api/chats/${encodeURIComponent(state.activeChatId)}/share`, { method: 'POST' });
     state.currentChat = payload.chat;
+    shareButton.classList.add('is-shared');
     const shareUrl = new URL(payload.url, window.location.origin).href;
     await navigator.clipboard.writeText(shareUrl);
     showToast('Share link copied.');
@@ -810,10 +818,12 @@ shareButton.addEventListener('click', async () => {
 });
 
 window.addEventListener('popstate', () => {
+  const shareId = shareIdFromPath();
   const chatId = chatIdFromPath();
-  if (chatId) {
-    if (state.authenticated) openChat(chatId, { updateHistory: false, allowShared: true });
-    else loadSharedChat(chatId);
+  if (shareId) {
+    loadSharedChat(shareId);
+  } else if (chatId && state.authenticated) {
+    openChat(chatId, { updateHistory: false });
   } else if (state.authenticated) {
     startNewChat(false);
   } else {
@@ -823,16 +833,17 @@ window.addEventListener('popstate', () => {
 
 async function initialize() {
   try {
+    const pathShareId = shareIdFromPath();
     const pathChatId = chatIdFromPath();
     const session = await api('/api/session');
     state.authenticated = session.authenticated === true;
+    if (pathShareId) return loadSharedChat(pathShareId, { replaceHistory: true });
     if (!state.authenticated) {
-      if (pathChatId) return loadSharedChat(pathChatId, { replaceHistory: true });
       return window.location.replace('/');
     }
     applyUser(session.user);
     await Promise.all([loadModels(), loadChats()]);
-    if (pathChatId) return openChat(pathChatId, { updateHistory: false, replaceHistory: true, allowShared: true });
+    if (pathChatId) return openChat(pathChatId, { updateHistory: false, replaceHistory: true });
     startNewChat(false);
   } catch (error) {
     showToast(error.message);

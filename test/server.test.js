@@ -26,21 +26,30 @@ async function withServer(run) {
   }
 }
 
-test('serves shared chats at the same read-only chat URL without authentication', async () => {
+test('serves only explicitly shared chats through a separate opaque share URL', async () => {
   await withServer(async (baseUrl, store) => {
     const userId = crypto.randomUUID();
     const chatId = crypto.randomUUID();
+    const privateChatId = crypto.randomUUID();
+    const shareId = 'AbCdEfGhIjKlMnOpQrStUvWx';
     await store.mutate((data) => {
-      data.chats.push({ id: chatId, userId, title: 'Shared chat', model: 'gpt-5.4-mini', isShared: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+      data.chats.push({ id: chatId, userId, title: 'Shared chat', model: 'gpt-5.4-mini', isShared: true, shareId, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+      data.chats.push({ id: privateChatId, userId, title: 'Private chat', model: 'gpt-5.4-mini', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
       data.messages.push({ id: crypto.randomUUID(), chatId, userId, role: 'assistant', content: 'Public answer', createdAt: new Date().toISOString() });
     });
-    const apiResponse = await fetch(`${baseUrl}/api/shared/chats/${chatId}`);
+    const apiResponse = await fetch(`${baseUrl}/api/shared/chats/${shareId}`);
     assert.equal(apiResponse.status, 200);
     const payload = await apiResponse.json();
     assert.equal(payload.readOnly, true);
+    assert.equal(payload.chat.id, undefined);
     assert.equal(payload.messages[0].content, 'Public answer');
-    const pageResponse = await fetch(`${baseUrl}/chats/${chatId}`, { redirect: 'manual' });
+    const pageResponse = await fetch(`${baseUrl}/share/${shareId}`, { redirect: 'manual' });
     assert.equal(pageResponse.status, 200);
+    const privateApiResponse = await fetch(`${baseUrl}/api/shared/chats/${privateChatId}`);
+    assert.equal(privateApiResponse.status, 404);
+    const internalPageResponse = await fetch(`${baseUrl}/chats/${chatId}`, { redirect: 'manual' });
+    assert.equal(internalPageResponse.status, 302);
+    assert.equal(internalPageResponse.headers.get('location'), '/');
   });
 });
 
@@ -124,7 +133,19 @@ test('registers a user and persists an authenticated chat', async () => {
 
     const fetched = await fetch(`${baseUrl}/api/chats/${chat.id}`, { headers: { Cookie: cookieHeader } });
     assert.equal(fetched.status, 200);
-    assert.equal((await fetched.json()).chat.title, 'New chat');
+    const fetchedChat = (await fetched.json()).chat;
+    assert.equal(fetchedChat.title, 'New chat');
+    assert.equal(fetchedChat.isShared, false);
+
+    const shared = await fetch(`${baseUrl}/api/chats/${chat.id}/share`, {
+      method: 'POST',
+      headers: { Cookie: cookieHeader, Origin: baseUrl, 'X-CSRF-Token': csrfToken }
+    });
+    assert.equal(shared.status, 200);
+    const sharePayload = await shared.json();
+    assert.match(sharePayload.url, /^\/share\/[A-Za-z0-9_-]{24}$/);
+    const publicResponse = await fetch(`${baseUrl}${sharePayload.url}`);
+    assert.equal(publicResponse.status, 200);
   });
 });
 

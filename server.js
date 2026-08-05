@@ -30,6 +30,7 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const MAX_MESSAGE_LENGTH = 20_000;
 const MAX_PROVIDER_OUTPUT_BYTES = 2 * 1024 * 1024;
 const PROVIDER_TIMEOUT_MS = 10 * 60 * 1000;
+const SHARE_ID_PATTERN = /^[A-Za-z0-9_-]{24}$/;
 
 function isSecureRequest(req) {
   const forwardedProtocol = String(req.get('X-Forwarded-Proto') || '').split(',')[0].trim().toLowerCase();
@@ -137,7 +138,7 @@ function serializeChat(chat) {
     id: chat.id,
     title: chat.title,
     model: chat.model,
-    isShared: chat.isShared === true,
+    isShared: chat.isShared === true && SHARE_ID_PATTERN.test(chat.shareId || ''),
     created_at: chat.createdAt,
     updated_at: chat.updatedAt
   };
@@ -444,6 +445,12 @@ function createApp(store) {
     }
     next();
   });
+  app.param('shareId', (req, res, next, value) => {
+    if (!SHARE_ID_PATTERN.test(value)) {
+      return res.status(404).json({ error: 'Shared chat not found.' });
+    }
+    next();
+  });
 
   app.get('/health', (req, res) => {
     store.read(() => true);
@@ -650,15 +657,20 @@ function createApp(store) {
     res.json(result);
   });
 
-  app.get('/api/shared/chats/:chatId', (req, res) => {
+  app.get('/api/shared/chats/:shareId', (req, res) => {
     const result = store.read((data) => {
-      const chat = data.chats.find((item) => item.id === req.params.chatId && item.isShared === true);
+      const chat = data.chats.find((item) => item.shareId === req.params.shareId && item.isShared === true);
       if (!chat) return null;
       const messages = data.messages
         .filter((message) => message.chatId === chat.id && message.userId === chat.userId)
         .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt))
         .map(serializeMessage);
-      return { chat: serializeChat(chat), messages, generation: null, readOnly: true };
+      return {
+        chat: { title: chat.title, created_at: chat.createdAt, updated_at: chat.updatedAt },
+        messages,
+        generation: null,
+        readOnly: true
+      };
     });
     if (!result) return res.status(404).json({ error: 'Shared chat not found.' });
     res.json(result);
@@ -670,11 +682,15 @@ function createApp(store) {
         const item = data.chats.find((candidate) => candidate.id === req.params.chatId && candidate.userId === req.session.userId);
         if (!item) return null;
         item.isShared = true;
+        if (!item.shareId) {
+          do item.shareId = crypto.randomBytes(18).toString('base64url');
+          while (data.chats.some((candidate) => candidate !== item && candidate.shareId === item.shareId));
+        }
         item.sharedAt = new Date().toISOString();
         return item;
       });
       if (!chat) return res.status(404).json({ error: 'Chat not found.' });
-      res.json({ chat: serializeChat(chat), url: `/chats/${chat.id}` });
+      res.json({ chat: serializeChat(chat), url: `/share/${chat.shareId}` });
     } catch (error) {
       next(error);
     }
@@ -835,7 +851,13 @@ function createApp(store) {
   });
   app.get('/chats/:chatId', optionalAuth, (req, res) => {
     const canView = store.read((data) => data.chats.some((chat) => chat.id === req.params.chatId
-      && (chat.isShared === true || chat.userId === req.session?.userId)));
+      && chat.userId === req.session?.userId));
+    if (!canView) return res.redirect('/');
+    res.setHeader('Cache-Control', 'no-store');
+    return res.sendFile(path.join(PUBLIC_DIR, 'console.html'));
+  });
+  app.get('/share/:shareId', (req, res) => {
+    const canView = store.read((data) => data.chats.some((chat) => chat.shareId === req.params.shareId && chat.isShared === true));
     if (!canView) return res.redirect('/');
     res.setHeader('Cache-Control', 'no-store');
     return res.sendFile(path.join(PUBLIC_DIR, 'console.html'));
