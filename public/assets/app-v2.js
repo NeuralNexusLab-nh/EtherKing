@@ -10,6 +10,8 @@ const state = {
   activeChatId: null,
   messages: [],
   generation: null,
+  submitting: false,
+  modelsReady: false,
   pollTimer: null,
   lastGenerationNotice: null,
   renderedMessageFingerprint: ''
@@ -39,11 +41,35 @@ function chatIdFromPath() {
 function setReadOnly(value) {
   state.readOnly = value;
   document.body.classList.toggle('shared-view', value);
-  modelSelect.disabled = value;
+  modelSelect.disabled = value || !state.modelsReady;
   if (value) clearPoll();
 }
 
-root.dataset.theme = 'light';
+function setTheme(theme) {
+  const value = theme === 'dark' ? 'dark' : 'light';
+  root.dataset.theme = value;
+  try { localStorage.setItem('etherking_theme', value); } catch {}
+  document.querySelectorAll('.theme-toggle').forEach((button) => {
+    const nextTheme = value === 'dark' ? 'light' : 'dark';
+    button.setAttribute('aria-label', `Use ${nextTheme} theme`);
+    button.title = `Use ${nextTheme} theme`;
+  });
+}
+
+let savedTheme = '';
+try { savedTheme = localStorage.getItem('etherking_theme') || ''; } catch {}
+setTheme(savedTheme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
+document.querySelectorAll('.theme-toggle').forEach((button) => {
+  button.addEventListener('click', () => setTheme(root.dataset.theme === 'dark' ? 'light' : 'dark'));
+});
+
+function storedModel() {
+  try { return localStorage.getItem('etherking_model') || ''; } catch { return ''; }
+}
+
+function rememberModel(model) {
+  try { localStorage.setItem('etherking_model', model); } catch {}
+}
 
 function getCookie(name) {
   const prefix = `${encodeURIComponent(name)}=`;
@@ -104,12 +130,13 @@ function isGenerating() {
 function resizeInput() {
   input.style.height = 'auto';
   input.style.height = `${Math.min(input.scrollHeight, 180)}px`;
-  sendButton.disabled = isGenerating() || !input.value.trim();
+  sendButton.disabled = state.submitting || isGenerating() || !state.modelsReady || !input.value.trim();
 }
 
 function setGenerating(value) {
   composer.classList.toggle('generating', value);
   input.disabled = value;
+  modelSelect.disabled = value || !state.modelsReady || state.readOnly;
   resizeInput();
 }
 
@@ -519,6 +546,7 @@ async function refreshActiveChat() {
 }
 
 async function openChat(chatId, options = {}) {
+  if (state.submitting) return;
   if (chatId === state.activeChatId && state.messages.length) return;
   try {
     clearPoll();
@@ -529,7 +557,7 @@ async function openChat(chatId, options = {}) {
     state.messages = payload.messages;
     state.generation = payload.generation;
     if (state.models.some((model) => model.id === payload.chat.model)) modelSelect.value = payload.chat.model;
-    localStorage.setItem('etherking_model', modelSelect.value);
+    rememberModel(modelSelect.value);
     renderChats();
     renderMessages();
     shareButton.hidden = false;
@@ -568,6 +596,7 @@ async function loadSharedChat(chatId, options = {}) {
 }
 
 function startNewChat(updateHistory = true) {
+  if (state.submitting) return;
   clearPoll();
   setReadOnly(false);
   state.activeChatId = null;
@@ -587,6 +616,7 @@ function startNewChat(updateHistory = true) {
 document.getElementById('new-chat').addEventListener('click', startNewChat);
 
 async function deleteChat(chatId, title) {
+  if (state.submitting) return;
   if (!window.confirm(`Delete "${title}"? This cannot be undone.`)) return;
   try {
     await api(`/api/chats/${encodeURIComponent(chatId)}`, { method: 'DELETE' });
@@ -598,39 +628,43 @@ async function deleteChat(chatId, title) {
   }
 }
 
-async function ensureChat() {
-  if (state.activeChatId) return state.activeChatId;
-  const payload = await api('/api/chats', {
-    method: 'POST',
-    body: JSON.stringify({ model: modelSelect.value })
-  });
-  state.activeChatId = payload.chat.id;
-  state.currentChat = payload.chat;
-  state.chats.unshift(payload.chat);
-  renderChats();
-  shareButton.hidden = false;
-  history.pushState({ chatId: payload.chat.id }, '', `/chats/${encodeURIComponent(payload.chat.id)}`);
-  return state.activeChatId;
-}
-
 async function sendMessage(content) {
+  if (state.submitting || isGenerating() || !state.modelsReady) return;
+  state.submitting = true;
   setGenerating(true);
   try {
-    const chatId = await ensureChat();
-    const payload = await api(`/api/chats/${encodeURIComponent(chatId)}/messages`, {
-      method: 'POST',
-      body: JSON.stringify({ content, model: modelSelect.value })
-    });
+    let payload;
+    if (state.activeChatId) {
+      payload = await api(`/api/chats/${encodeURIComponent(state.activeChatId)}/messages`, {
+        method: 'POST',
+        body: JSON.stringify({ content, model: modelSelect.value })
+      });
+    } else {
+      payload = await api('/api/chats', {
+        method: 'POST',
+        body: JSON.stringify({ content, model: modelSelect.value })
+      });
+      state.activeChatId = payload.chat.id;
+      state.currentChat = payload.chat;
+      state.chats.unshift(payload.chat);
+      shareButton.hidden = false;
+      history.pushState({ chatId: payload.chat.id }, '', `/chats/${encodeURIComponent(payload.chat.id)}`);
+      renderChats();
+    }
     state.messages.push(payload.message);
     state.generation = payload.generation;
     renderMessages();
     schedulePoll();
-    await loadChats();
+    loadChats().catch((error) => showToast(error.message));
   } catch (error) {
     state.generation = null;
-    setGenerating(false);
+    if (!input.value) input.value = content;
+    resizeInput();
     renderMessages();
     showToast(error.message);
+  } finally {
+    state.submitting = false;
+    setGenerating(isGenerating());
   }
 }
 
@@ -644,29 +678,45 @@ composer.addEventListener('submit', (event) => {
   sendMessage(content);
 });
 
-modelSelect.addEventListener('change', () => localStorage.setItem('etherking_model', modelSelect.value));
+modelSelect.addEventListener('change', () => rememberModel(modelSelect.value));
 
 async function loadModels() {
-  const payload = await api('/api/models');
-  state.models = payload.models;
-  modelSelect.replaceChildren();
-  const providers = new Map();
-  for (const model of payload.models) {
-    if (!providers.has(model.provider)) {
-      const group = document.createElement('optgroup');
-      group.label = model.provider;
-      providers.set(model.provider, group);
-      modelSelect.appendChild(group);
+  modelSelect.disabled = true;
+  try {
+    const payload = await api('/api/models');
+    state.models = payload.models;
+    modelSelect.replaceChildren();
+    const providers = new Map();
+    for (const model of payload.models) {
+      if (!providers.has(model.provider)) {
+        const group = document.createElement('optgroup');
+        group.label = model.provider;
+        providers.set(model.provider, group);
+        modelSelect.appendChild(group);
+      }
+      const option = document.createElement('option');
+      option.value = model.id;
+      option.textContent = model.name;
+      option.dataset.plan = model.plan;
+      providers.get(model.provider).appendChild(option);
     }
+    const saved = storedModel();
+    if (saved && payload.models.some((model) => model.id === saved)) modelSelect.value = saved;
+    else if (payload.models.some((model) => model.id === 'gpt-5.4-mini')) modelSelect.value = 'gpt-5.4-mini';
+    state.modelsReady = modelSelect.options.length > 0;
+    if (!state.modelsReady) throw new Error('No models are available.');
+  } catch (error) {
+    state.modelsReady = false;
     const option = document.createElement('option');
-    option.value = model.id;
-    option.textContent = model.name;
-    option.dataset.plan = model.plan;
-    providers.get(model.provider).appendChild(option);
+    option.textContent = 'Models unavailable';
+    option.disabled = true;
+    option.selected = true;
+    modelSelect.replaceChildren(option);
+    throw error;
+  } finally {
+    modelSelect.disabled = !state.modelsReady || state.readOnly;
+    resizeInput();
   }
-  const saved = localStorage.getItem('etherking_model');
-  if (saved && payload.models.some((model) => model.id === saved)) modelSelect.value = saved;
-  else if (payload.models.some((model) => model.id === 'gpt-5.4-mini')) modelSelect.value = 'gpt-5.4-mini';
 }
 
 document.getElementById('account-button').addEventListener('click', () => accountDialog.showModal());
@@ -695,7 +745,7 @@ document.getElementById('delete-account-button').addEventListener('click', async
   }
   try {
     await api('/api/account', { method: 'DELETE', body: JSON.stringify({ password }) });
-    localStorage.removeItem('etherking_model');
+    try { localStorage.removeItem('etherking_model'); } catch {}
     window.location.replace('/');
   } catch (error) {
     alert.textContent = error.message;

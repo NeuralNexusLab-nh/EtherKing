@@ -291,7 +291,7 @@ async function processGeneration(store, jobId) {
   }
 }
 
-async function queueGeneration(store, { userId, chatId, model, prepare }) {
+async function queueGeneration(store, { userId, chatId, model, prepare, createChat }) {
   const config = MODEL_REGISTRY[model];
   if (!config) {
     const error = new Error('Invalid model.');
@@ -312,7 +312,11 @@ async function queueGeneration(store, { userId, chatId, model, prepare }) {
   }
   try {
     const result = await store.mutate((data) => {
-      const chat = data.chats.find((candidate) => candidate.id === chatId && candidate.userId === userId);
+      let chat = data.chats.find((candidate) => candidate.id === chatId && candidate.userId === userId);
+      if (!chat && createChat) {
+        chat = createChat(data);
+        if (chat) data.chats.push(chat);
+      }
       if (!chat) return null;
       if (activeGeneration(data, chatId, userId)) {
         const error = new Error('A response is already being generated for this chat.');
@@ -338,7 +342,7 @@ async function queueGeneration(store, { userId, chatId, model, prepare }) {
       data.generationJobs.push(job);
       chat.model = model;
       chat.updatedAt = now;
-      return { job, userMessage };
+      return { job, userMessage, chat };
     });
     if (!result) {
       const error = new Error('Chat not found.');
@@ -581,6 +585,10 @@ function createApp(store) {
   });
 
   app.post('/api/chats', ...requireAuth, requireCsrf, async (req, res, next) => {
+    const content = typeof req.body?.content === 'string' ? req.body.content.trim() : '';
+    if (req.body?.content !== undefined && (!content || content.length > MAX_MESSAGE_LENGTH)) {
+      return res.status(400).json({ error: `Message must contain between 1 and ${MAX_MESSAGE_LENGTH} characters.` });
+    }
     try {
       const now = new Date().toISOString();
       const chat = {
@@ -591,9 +599,37 @@ function createApp(store) {
         createdAt: now,
         updatedAt: now
       };
+      if (content) {
+        const result = await queueGeneration(store, {
+          userId: req.session.userId,
+          chatId: chat.id,
+          model: req.body?.model,
+          createChat: () => chat,
+          prepare(data) {
+            const message = {
+              id: crypto.randomUUID(),
+              chatId: chat.id,
+              userId: req.session.userId,
+              role: 'user',
+              content,
+              createdAt: now
+            };
+            data.messages.push(message);
+            return message;
+          }
+        });
+        return res.status(202).json({
+          chat: serializeChat(result.chat),
+          message: serializeMessage(result.userMessage),
+          generation: serializeGeneration(result.job),
+          quota: result.quota
+        });
+      }
       await store.mutate((data) => data.chats.push(chat));
       res.status(201).json({ chat: serializeChat(chat) });
     } catch (error) {
+      const status = generationErrorStatus(error);
+      if (status) return res.status(status).json({ error: error.message });
       next(error);
     }
   });

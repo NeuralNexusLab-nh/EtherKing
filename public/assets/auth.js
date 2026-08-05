@@ -9,7 +9,23 @@ const alertBox = document.getElementById('auth-alert');
 const title = document.getElementById('auth-title');
 const subtitle = document.getElementById('auth-subtitle');
 
-root.dataset.theme = 'light';
+function setTheme(theme) {
+  const value = theme === 'dark' ? 'dark' : 'light';
+  root.dataset.theme = value;
+  try { localStorage.setItem('etherking_theme', value); } catch {}
+  document.querySelectorAll('.theme-toggle').forEach((button) => {
+    const nextTheme = value === 'dark' ? 'light' : 'dark';
+    button.setAttribute('aria-label', `Use ${nextTheme} theme`);
+    button.title = `Use ${nextTheme} theme`;
+  });
+}
+
+let savedTheme = '';
+try { savedTheme = localStorage.getItem('etherking_theme') || ''; } catch {}
+setTheme(savedTheme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
+document.querySelectorAll('.theme-toggle').forEach((button) => {
+  button.addEventListener('click', () => setTheme(root.dataset.theme === 'dark' ? 'light' : 'dark'));
+});
 
 function setMode(mode) {
   const registering = mode === 'register';

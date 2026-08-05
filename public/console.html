@@ -15,7 +15,7 @@
     <div class="sidebar-top">
       <a class="brand compact-brand" href="/app" aria-label="EtherKing home">
         <span class="brand-logo" aria-hidden="true">
-          <svg viewBox="0 0 32 32"><path class="logo-frame" d="M16 2.5 28 9.3v13.4L16 29.5 4 22.7V9.3L16 2.5Z"/><path class="logo-core" d="m17.8 7.5-8 10.2h5.4l-1 6.8 8-10.2h-5.4l1-6.8Z"/></svg>
+          <svg viewBox="0 0 32 32"><rect class="logo-frame" x="2.5" y="2.5" width="27" height="27" rx="9"/><path class="logo-core" d="m16 6.8 2.5 6.7 6.7 2.5-6.7 2.5-2.5 6.7-2.5-6.7L6.8 16l6.7-2.5L16 6.8Z"/><circle class="logo-center" cx="16" cy="16" r="2.35"/></svg>
         </span>
         <span>EtherKing</span>
       </a>
@@ -50,7 +50,7 @@
       </button>
       <label class="model-picker">
         <span class="sr-only">Model</span>
-        <select id="model-select" aria-label="Select model"></select>
+        <select id="model-select" aria-label="Select model" disabled><option selected disabled>Loading models...</option></select>
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg>
       </label>
       <div class="header-actions">
@@ -58,7 +58,7 @@
           <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="m8.2 10.8 7.6-4.5M8.2 13.2l7.6 4.5"/></svg>
         </button>
         <button id="usage-button" class="text-button" type="button">Usage</button>
-        <button class="icon-button theme-toggle" type="button" aria-label="Light theme" title="Light theme" hidden>
+        <button class="icon-button theme-toggle" type="button" aria-label="Use dark theme" title="Use dark theme">
           <svg class="sun-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4V2m0 20v-2M4 12H2m20 0h-2M5.64 5.64 4.22 4.22m15.56 15.56-1.42-1.42m0-12.72 1.42-1.42M4.22 19.78l1.42-1.42M12 7a5 5 0 1 0 0 10 5 5 0 0 0 0-10Z"/></svg>
           <svg class="moon-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 14.6A8.5 8.5 0 0 1 9.4 3.5a8.5 8.5 0 1 0 11.1 11.1Z"/></svg>
         </button>
@@ -67,7 +67,9 @@
 
     <section id="conversation" class="conversation" aria-live="polite">
       <div id="empty-state" class="empty-state">
-        <span class="brand-mark brand-mark-large" aria-hidden="true">E</span>
+        <span class="brand-logo brand-logo-large" aria-hidden="true">
+          <svg viewBox="0 0 32 32"><rect class="logo-frame" x="2.5" y="2.5" width="27" height="27" rx="9"/><path class="logo-core" d="m16 6.8 2.5 6.7 6.7 2.5-6.7 2.5-2.5 6.7-2.5-6.7L6.8 16l6.7-2.5L16 6.8Z"/><circle class="logo-center" cx="16" cy="16" r="2.35"/></svg>
+        </span>
         <h1>How can I help you today?</h1>
       </div>
       <div id="messages" class="messages"></div>

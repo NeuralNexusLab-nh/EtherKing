@@ -30,12 +30,15 @@ test('background generation finishes and persists after the enqueue response is 
     const chatId = crypto.randomUUID();
     await store.mutate((data) => {
       data.users.push({ id: userId });
-      data.chats.push({ id: chatId, userId, title: 'Existing title', model: 'gpt-5.4-mini', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
     });
     const queued = await queueGeneration(store, {
       userId,
       chatId,
       model: 'gpt-5.4-mini',
+      createChat() {
+        const now = new Date().toISOString();
+        return { id: chatId, userId, title: 'Existing title', model: 'gpt-5.4-mini', createdAt: now, updatedAt: now };
+      },
       prepare(data) {
         const message = { id: crypto.randomUUID(), chatId, userId, role: 'user', content: 'Run in the background', createdAt: new Date().toISOString() };
         data.messages.push(message);
@@ -45,6 +48,14 @@ test('background generation finishes and persists after the enqueue response is 
     assert.equal(queued.job.status, 'queued');
     assert.equal(queued.job.content, '');
     assert.equal(queued.job.isDone, false);
+    const queuedSnapshot = store.read((data) => ({
+      chat: data.chats.find((item) => item.id === chatId),
+      message: data.messages.find((item) => item.id === queued.userMessage.id),
+      job: data.generationJobs.find((item) => item.id === queued.job.id)
+    }));
+    assert.equal(queuedSnapshot.chat.id, chatId);
+    assert.equal(queuedSnapshot.message.chatId, chatId);
+    assert.equal(queuedSnapshot.job.chatId, chatId);
 
     const deadline = Date.now() + 2000;
     let status;
