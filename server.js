@@ -5,6 +5,13 @@ const path = require('path');
 const express = require('express');
 const { FileStore } = require('./lib/storage');
 const {
+  clearLoginFailures,
+  consumeGenerationAllowance,
+  loginCaptchaRequired,
+  recordLoginFailure,
+  verifyCaptchaProof
+} = require('./lib/captcha');
+const {
   compactTitle,
   hashPassword,
   hashToken,
@@ -292,7 +299,7 @@ async function processGeneration(store, jobId) {
   }
 }
 
-async function queueGeneration(store, { userId, chatId, model, prepare, createChat }) {
+async function queueGeneration(store, { userId, chatId, model, prepare, createChat, captchaVerified = false }) {
   const config = MODEL_REGISTRY[model];
   if (!config) {
     const error = new Error('Invalid model.');
@@ -325,6 +332,7 @@ async function queueGeneration(store, { userId, chatId, model, prepare, createCh
         throw error;
       }
       const userMessage = prepare(data, chat);
+      consumeGenerationAllowance(data, userId, { verified: captchaVerified });
       const now = new Date().toISOString();
       const job = {
         id: crypto.randomUUID(),
@@ -364,11 +372,22 @@ function generationErrorStatus(error) {
     MESSAGE_NOT_FOUND: 404,
     PROVIDER_NOT_CONFIGURED: 503,
     QUOTA_EXHAUSTED: 429,
-    GENERATION_ACTIVE: 409
+    GENERATION_ACTIVE: 409,
+    CAPTCHA_REQUIRED: 403,
+    CAPTCHA_INVALID: 403,
+    CAPTCHA_UNAVAILABLE: 503
   }[error.code] || 0;
 }
 
-function createApp(store) {
+function generationErrorPayload(error) {
+  return {
+    error: error.message,
+    ...(String(error.code || '').startsWith('CAPTCHA_') ? { code: error.code } : {})
+  };
+}
+
+function createApp(store, options = {}) {
+  const verifyCaptcha = options.verifyCaptchaProof || verifyCaptchaProof;
   const app = express();
   app.disable('x-powered-by');
   app.set('trust proxy', false);
@@ -387,12 +406,12 @@ function createApp(store) {
     res.setHeader('Expires', '0');
     res.setHeader('Content-Security-Policy', [
       "default-src 'self'",
-      "script-src 'self'",
+      "script-src 'self' https://nexacaptcha.zone.id",
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data:",
       "connect-src 'self'",
       "font-src 'self'",
-      "frame-src 'none'",
+      "frame-src https://nexacaptcha.zone.id",
       "object-src 'none'",
       "base-uri 'none'",
       "form-action 'self'",
@@ -472,6 +491,7 @@ function createApp(store) {
       if (displayName.length < 2) return res.status(400).json({ error: 'Name must contain at least 2 characters.' });
       const passwordError = validatePassword(password);
       if (passwordError) return res.status(400).json({ error: passwordError });
+      await verifyCaptcha(req.body?.captcha);
 
       const passwordHash = await hashPassword(password);
       const user = {
@@ -500,6 +520,8 @@ function createApp(store) {
       setSessionCookies(req, res, session);
       return res.status(201).json({ user: publicUser(user) });
     } catch (error) {
+      const status = generationErrorStatus(error);
+      if (status) return res.status(status).json(generationErrorPayload(error));
       next(error);
     }
   });
@@ -509,20 +531,35 @@ function createApp(store) {
       if (!(await checkAuthRateLimit(store, req))) return res.status(429).json({ error: 'Too many attempts. Try again later.' });
       const email = normalizeEmail(req.body?.email);
       const password = req.body?.password;
+      const loginBucket = hashToken(`login:${req.ip || 'unknown'}:${email}`);
+      const needsCaptcha = await store.mutate((data) => loginCaptchaRequired(data, loginBucket));
+      if (needsCaptcha && !req.body?.captcha) {
+        const error = new Error('Complete human verification to continue signing in.');
+        error.code = 'CAPTCHA_REQUIRED';
+        throw error;
+      }
+      if (needsCaptcha) await verifyCaptcha(req.body.captcha);
       const user = store.read((data) => data.users.find((item) => item.email === email) || null);
       if (!user) {
         await hashPassword(typeof password === 'string' ? password : 'invalid-password-0');
+        await store.mutate((data) => recordLoginFailure(data, loginBucket));
         return res.status(401).json({ error: 'Email or password is incorrect.' });
       }
-      if (!(await verifyPassword(password, user.passwordHash))) return res.status(401).json({ error: 'Email or password is incorrect.' });
+      if (!(await verifyPassword(password, user.passwordHash))) {
+        await store.mutate((data) => recordLoginFailure(data, loginBucket));
+        return res.status(401).json({ error: 'Email or password is incorrect.' });
+      }
       const session = newSession(user.id);
       await store.mutate((data) => {
         data.sessions = data.sessions.filter((item) => item.userId !== user.id || Date.parse(item.expiresAt) > Date.now());
         data.sessions.push(session.record);
+        clearLoginFailures(data, loginBucket);
       });
       setSessionCookies(req, res, session);
       return res.json({ user: publicUser(user) });
     } catch (error) {
+      const status = generationErrorStatus(error);
+      if (status) return res.status(status).json(generationErrorPayload(error));
       next(error);
     }
   });
@@ -554,6 +591,7 @@ function createApp(store) {
         data.dailyUsage = data.dailyUsage.filter((usage) => usage.userId !== userId);
         data.quotaUsage = data.quotaUsage.filter((usage) => usage.userId !== userId);
         data.generationJobs = data.generationJobs.filter((job) => job.userId !== userId);
+        data.captchaUsage = data.captchaUsage.filter((usage) => usage.userId !== userId);
       });
       clearAuthCookies(req, res);
       res.status(204).end();
@@ -597,6 +635,11 @@ function createApp(store) {
       return res.status(400).json({ error: `Message must contain between 1 and ${MAX_MESSAGE_LENGTH} characters.` });
     }
     try {
+      let captchaVerified = false;
+      if (req.body?.captcha) {
+        await verifyCaptcha(req.body.captcha);
+        captchaVerified = true;
+      }
       const now = new Date().toISOString();
       const chat = {
         id: crypto.randomUUID(),
@@ -611,6 +654,7 @@ function createApp(store) {
           userId: req.session.userId,
           chatId: chat.id,
           model: req.body?.model,
+          captchaVerified,
           createChat: () => chat,
           prepare(data) {
             const message = {
@@ -636,7 +680,7 @@ function createApp(store) {
       res.status(201).json({ chat: serializeChat(chat) });
     } catch (error) {
       const status = generationErrorStatus(error);
-      if (status) return res.status(status).json({ error: error.message });
+      if (status) return res.status(status).json(generationErrorPayload(error));
       next(error);
     }
   });
@@ -734,10 +778,16 @@ function createApp(store) {
     const model = req.body?.model;
     if (!content || content.length > MAX_MESSAGE_LENGTH) return res.status(400).json({ error: `Message must contain between 1 and ${MAX_MESSAGE_LENGTH} characters.` });
     try {
+      let captchaVerified = false;
+      if (req.body?.captcha) {
+        await verifyCaptcha(req.body.captcha);
+        captchaVerified = true;
+      }
       const result = await queueGeneration(store, {
         userId: req.session.userId,
         chatId: req.params.chatId,
         model,
+        captchaVerified,
         prepare(data) {
           const message = {
             id: crypto.randomUUID(),
@@ -758,7 +808,7 @@ function createApp(store) {
       });
     } catch (error) {
       const status = generationErrorStatus(error);
-      if (status) return res.status(status).json({ error: error.message });
+      if (status) return res.status(status).json(generationErrorPayload(error));
       next(error);
     }
   });
@@ -768,10 +818,16 @@ function createApp(store) {
     const model = req.body?.model;
     if (!content || content.length > MAX_MESSAGE_LENGTH) return res.status(400).json({ error: `Message must contain between 1 and ${MAX_MESSAGE_LENGTH} characters.` });
     try {
+      let captchaVerified = false;
+      if (req.body?.captcha) {
+        await verifyCaptcha(req.body.captcha);
+        captchaVerified = true;
+      }
       const result = await queueGeneration(store, {
         userId: req.session.userId,
         chatId: req.params.chatId,
         model,
+        captchaVerified,
         prepare(data) {
           const ordered = sortedChatMessages(data, req.params.chatId, req.session.userId);
           const index = ordered.findIndex((message) => message.id === req.params.messageId && message.role === 'user');
@@ -792,7 +848,7 @@ function createApp(store) {
       res.status(202).json({ message: serializeMessage(result.userMessage), generation: serializeGeneration(result.job), quota: result.quota });
     } catch (error) {
       const status = generationErrorStatus(error);
-      if (status) return res.status(status).json({ error: error.message });
+      if (status) return res.status(status).json(generationErrorPayload(error));
       next(error);
     }
   });
@@ -800,10 +856,16 @@ function createApp(store) {
   app.post('/api/chats/:chatId/messages/:messageId/regenerate', ...requireAuth, requireCsrf, async (req, res, next) => {
     const model = req.body?.model;
     try {
+      let captchaVerified = false;
+      if (req.body?.captcha) {
+        await verifyCaptcha(req.body.captcha);
+        captchaVerified = true;
+      }
       const result = await queueGeneration(store, {
         userId: req.session.userId,
         chatId: req.params.chatId,
         model,
+        captchaVerified,
         prepare(data) {
           const ordered = sortedChatMessages(data, req.params.chatId, req.session.userId);
           const index = ordered.findIndex((message) => message.id === req.params.messageId && message.role === 'assistant');
@@ -833,7 +895,7 @@ function createApp(store) {
       res.status(202).json({ generation: serializeGeneration(result.job), quota: result.quota });
     } catch (error) {
       const status = generationErrorStatus(error);
-      if (status) return res.status(status).json({ error: error.message });
+      if (status) return res.status(status).json(generationErrorPayload(error));
       next(error);
     }
   });

@@ -10,7 +10,7 @@
   },
   "scripts": {
     "start": "node server.js",
-    "check": "node --check server.js && node --check lib/security.js && node --check lib/sse.js && node --check lib/ndjson.js && node --check lib/providers.js && node --check lib/quota.js && node --check lib/storage.js && node --check public/assets/auth.js && node --check public/assets/app-v2.js",
+    "check": "node --check server.js && node --check lib/captcha.js && node --check lib/security.js && node --check lib/sse.js && node --check lib/ndjson.js && node --check lib/providers.js && node --check lib/quota.js && node --check lib/storage.js && node --check public/assets/auth.js && node --check public/assets/app-v2.js",
     "test": "node --test --test-isolation=none"
   },
   "dependencies": {

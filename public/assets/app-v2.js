@@ -32,6 +32,50 @@ const accountDialog = document.getElementById('account-dialog');
 const usageDialog = document.getElementById('usage-dialog');
 const toast = document.getElementById('toast');
 const shareButton = document.getElementById('share-button');
+const captchaDialog = document.getElementById('captcha-dialog');
+const captchaMount = document.getElementById('captcha-mount');
+const captchaAlert = document.getElementById('captcha-alert');
+let captchaWidget = null;
+let captchaRequest = null;
+
+function requestHumanVerification() {
+  if (!window.NexaCAPTCHA?.render) return Promise.reject(new Error('Human verification failed to load. Please refresh and try again.'));
+  if (captchaRequest) return captchaRequest.promise;
+  let resolveRequest;
+  let rejectRequest;
+  const promise = new Promise((resolve, reject) => {
+    resolveRequest = resolve;
+    rejectRequest = reject;
+  });
+  captchaRequest = { promise, resolve: resolveRequest, reject: rejectRequest };
+  captchaAlert.hidden = true;
+  if (!captchaWidget) {
+    captchaWidget = window.NexaCAPTCHA.render(captchaMount, {
+      onComplete(result) {
+        if (!result?.success || !captchaRequest) return;
+        const current = captchaRequest;
+        captchaRequest = null;
+        current.resolve({ verificationId: result.verificationId, responseToken: result.responseToken });
+        captchaDialog.close();
+      }
+    });
+  } else {
+    captchaWidget.reset();
+  }
+  captchaDialog.showModal();
+  return promise;
+}
+
+function cancelHumanVerification() {
+  if (!captchaRequest) return;
+  const current = captchaRequest;
+  captchaRequest = null;
+  current.reject(new Error('Human verification was cancelled.'));
+}
+
+document.getElementById('captcha-cancel').addEventListener('click', () => captchaDialog.close());
+captchaDialog.addEventListener('close', cancelHumanVerification);
+captchaDialog.addEventListener('cancel', cancelHumanVerification);
 
 function chatIdFromPath() {
   const match = /^\/chats\/([0-9a-f-]{36})$/i.exec(window.location.pathname);
@@ -94,10 +138,24 @@ async function api(url, options = {}) {
   }
   if (!response.ok) {
     const payload = await response.json().catch(() => ({}));
-    throw new Error(payload.error || 'Request failed.');
+    const error = new Error(payload.error || 'Request failed.');
+    error.code = payload.code;
+    error.status = response.status;
+    throw error;
   }
   if (response.status === 204) return null;
   return response.json();
+}
+
+async function generationApi(url, options = {}) {
+  try {
+    return await api(url, options);
+  } catch (error) {
+    if (error.code !== 'CAPTCHA_REQUIRED') throw error;
+    const captcha = await requestHumanVerification();
+    const body = options.body ? JSON.parse(options.body) : {};
+    return api(url, { ...options, body: JSON.stringify({ ...body, captcha }) });
+  }
 }
 
 function showToast(message) {
@@ -355,7 +413,7 @@ function beginEditMessage(message, body, actions) {
     if (!content) return showToast('Message cannot be empty.');
     submit.disabled = true;
     try {
-      const payload = await api(`/api/chats/${encodeURIComponent(state.activeChatId)}/messages/${encodeURIComponent(message.id)}`, {
+      const payload = await generationApi(`/api/chats/${encodeURIComponent(state.activeChatId)}/messages/${encodeURIComponent(message.id)}`, {
         method: 'PATCH',
         body: JSON.stringify({ content, model: modelSelect.value })
       });
@@ -374,7 +432,7 @@ function beginEditMessage(message, body, actions) {
 
 async function regenerateMessage(message) {
   try {
-    const payload = await api(`/api/chats/${encodeURIComponent(state.activeChatId)}/messages/${encodeURIComponent(message.id)}/regenerate`, {
+    const payload = await generationApi(`/api/chats/${encodeURIComponent(state.activeChatId)}/messages/${encodeURIComponent(message.id)}/regenerate`, {
       method: 'POST',
       body: JSON.stringify({ model: modelSelect.value })
     });
@@ -641,12 +699,12 @@ async function sendMessage(content) {
   try {
     let payload;
     if (state.activeChatId) {
-      payload = await api(`/api/chats/${encodeURIComponent(state.activeChatId)}/messages`, {
+      payload = await generationApi(`/api/chats/${encodeURIComponent(state.activeChatId)}/messages`, {
         method: 'POST',
         body: JSON.stringify({ content, model: modelSelect.value })
       });
     } else {
-      payload = await api('/api/chats', {
+      payload = await generationApi('/api/chats', {
         method: 'POST',
         body: JSON.stringify({ content, model: modelSelect.value })
       });

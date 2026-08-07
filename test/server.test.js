@@ -10,10 +10,10 @@ const { FileStore } = require('../lib/storage');
 const { createApp } = require('../server');
 const { chargeQuota, getQuotaUsage, QUOTA_WINDOWS, reserveQuota } = require('../lib/quota');
 
-async function withServer(run) {
+async function withServer(run, appOptions = {}) {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'etherking-http-'));
   const store = await new FileStore(path.join(directory, 'store.json')).init();
-  const app = createApp(store);
+  const app = createApp(store, appOptions);
   const server = await new Promise((resolve) => {
     const instance = app.listen(0, '127.0.0.1', () => resolve(instance));
   });
@@ -115,7 +115,7 @@ test('registers a user and persists an authenticated chat', async () => {
     const registration = await fetch(`${baseUrl}/api/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Origin: baseUrl },
-      body: JSON.stringify({ displayName: 'Ada User', email: 'ada@example.com', password: 'correct-horse-123' })
+      body: JSON.stringify({ displayName: 'Ada User', email: 'ada@example.com', password: 'correct-horse-123', captcha: { verificationId: 'test', responseToken: 'test' } })
     });
     assert.equal(registration.status, 201);
     const setCookies = registration.headers.getSetCookie();
@@ -146,6 +146,58 @@ test('registers a user and persists an authenticated chat', async () => {
     assert.match(sharePayload.url, /^\/share\/[A-Za-z0-9_-]{24}$/);
     const publicResponse = await fetch(`${baseUrl}${sharePayload.url}`);
     assert.equal(publicResponse.status, 200);
+  }, { verifyCaptchaProof: async () => ({ verifiedAt: new Date().toISOString() }) });
+});
+
+test('requires human verification when registering', async () => {
+  await withServer(async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Origin: baseUrl },
+      body: JSON.stringify({ displayName: 'Ada User', email: 'ada@example.com', password: 'correct-horse-123' })
+    });
+    assert.equal(response.status, 403);
+    assert.equal((await response.json()).code, 'CAPTCHA_INVALID');
+  });
+});
+
+test('requires human verification after three failed passwords', async () => {
+  let captchaChecks = 0;
+  await withServer(async (baseUrl) => {
+    const registration = await fetch(`${baseUrl}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Origin: baseUrl },
+      body: JSON.stringify({ displayName: 'Ada User', email: 'ada@example.com', password: 'correct-horse-123', captcha: {} })
+    });
+    assert.equal(registration.status, 201);
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const failed = await fetch(`${baseUrl}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Origin: baseUrl },
+        body: JSON.stringify({ email: 'ada@example.com', password: 'incorrect-password' })
+      });
+      assert.equal(failed.status, 401);
+    }
+    const required = await fetch(`${baseUrl}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Origin: baseUrl },
+      body: JSON.stringify({ email: 'ada@example.com', password: 'incorrect-password' })
+    });
+    assert.equal(required.status, 403);
+    assert.equal((await required.json()).code, 'CAPTCHA_REQUIRED');
+    const verifiedFailure = await fetch(`${baseUrl}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Origin: baseUrl },
+      body: JSON.stringify({ email: 'ada@example.com', password: 'incorrect-password', captcha: {} })
+    });
+    assert.equal(verifiedFailure.status, 401);
+    assert.equal(captchaChecks, 2);
+  }, {
+    verifyCaptchaProof: async () => {
+      captchaChecks += 1;
+      if (captchaChecks === 2) return { verifiedAt: new Date().toISOString() };
+      return { verifiedAt: new Date().toISOString() };
+    }
   });
 });
 

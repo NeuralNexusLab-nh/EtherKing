@@ -6,6 +6,7 @@
   <meta name="color-scheme" content="dark light">
   <title>Sign in - EtherKing</title>
   <link rel="stylesheet" href="/assets/styles.css">
+  <script src="https://nexacaptcha.zone.id/v1/captcha.js" defer></script>
   <script src="/assets/auth.js" defer></script>
 </head>
 <body class="auth-page">
@@ -71,5 +72,18 @@
       <p class="auth-footnote">Your chats are encrypted in transit and stored with your account.</p>
     </section>
   </main>
+
+  <dialog id="captcha-dialog" class="dialog captcha-dialog">
+    <div class="dialog-card">
+      <div class="dialog-header">
+        <div><h2>Human verification</h2><p>Complete this check to continue.</p></div>
+        <button id="captcha-cancel" class="icon-button" type="button" aria-label="Cancel verification">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>
+        </button>
+      </div>
+      <div id="captcha-mount" class="captcha-mount"></div>
+      <div id="captcha-alert" class="form-alert" role="alert" hidden></div>
+    </div>
+  </dialog>
 </body>
 </html>
