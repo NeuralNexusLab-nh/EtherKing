@@ -161,7 +161,7 @@ test('requires human verification when registering', async () => {
   });
 });
 
-test('requires human verification after three failed passwords', async () => {
+test('requires human verification on every login', async () => {
   let captchaChecks = 0;
   await withServer(async (baseUrl) => {
     const registration = await fetch(`${baseUrl}/api/auth/register`, {
@@ -170,14 +170,6 @@ test('requires human verification after three failed passwords', async () => {
       body: JSON.stringify({ displayName: 'Ada User', email: 'ada@example.com', password: 'correct-horse-123', captcha: {} })
     });
     assert.equal(registration.status, 201);
-    for (let attempt = 0; attempt < 3; attempt += 1) {
-      const failed = await fetch(`${baseUrl}/api/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Origin: baseUrl },
-        body: JSON.stringify({ email: 'ada@example.com', password: 'incorrect-password' })
-      });
-      assert.equal(failed.status, 401);
-    }
     const required = await fetch(`${baseUrl}/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Origin: baseUrl },
@@ -185,17 +177,16 @@ test('requires human verification after three failed passwords', async () => {
     });
     assert.equal(required.status, 403);
     assert.equal((await required.json()).code, 'CAPTCHA_REQUIRED');
-    const verifiedFailure = await fetch(`${baseUrl}/api/auth/login`, {
+    const verifiedLogin = await fetch(`${baseUrl}/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Origin: baseUrl },
-      body: JSON.stringify({ email: 'ada@example.com', password: 'incorrect-password', captcha: {} })
+      body: JSON.stringify({ email: 'ada@example.com', password: 'correct-horse-123', captcha: {} })
     });
-    assert.equal(verifiedFailure.status, 401);
+    assert.equal(verifiedLogin.status, 200);
     assert.equal(captchaChecks, 2);
   }, {
     verifyCaptchaProof: async () => {
       captchaChecks += 1;
-      if (captchaChecks === 2) return { verifiedAt: new Date().toISOString() };
       return { verifiedAt: new Date().toISOString() };
     }
   });

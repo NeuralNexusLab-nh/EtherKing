@@ -5,10 +5,7 @@ const path = require('path');
 const express = require('express');
 const { FileStore } = require('./lib/storage');
 const {
-  clearLoginFailures,
   consumeGenerationAllowance,
-  loginCaptchaRequired,
-  recordLoginFailure,
   verifyCaptchaProof
 } = require('./lib/captcha');
 const {
@@ -531,29 +528,24 @@ function createApp(store, options = {}) {
       if (!(await checkAuthRateLimit(store, req))) return res.status(429).json({ error: 'Too many attempts. Try again later.' });
       const email = normalizeEmail(req.body?.email);
       const password = req.body?.password;
-      const loginBucket = hashToken(`login:${req.ip || 'unknown'}:${email}`);
-      const needsCaptcha = await store.mutate((data) => loginCaptchaRequired(data, loginBucket));
-      if (needsCaptcha && !req.body?.captcha) {
+      if (!req.body?.captcha) {
         const error = new Error('Complete human verification to continue signing in.');
         error.code = 'CAPTCHA_REQUIRED';
         throw error;
       }
-      if (needsCaptcha) await verifyCaptcha(req.body.captcha);
+      await verifyCaptcha(req.body.captcha);
       const user = store.read((data) => data.users.find((item) => item.email === email) || null);
       if (!user) {
         await hashPassword(typeof password === 'string' ? password : 'invalid-password-0');
-        await store.mutate((data) => recordLoginFailure(data, loginBucket));
         return res.status(401).json({ error: 'Email or password is incorrect.' });
       }
       if (!(await verifyPassword(password, user.passwordHash))) {
-        await store.mutate((data) => recordLoginFailure(data, loginBucket));
         return res.status(401).json({ error: 'Email or password is incorrect.' });
       }
       const session = newSession(user.id);
       await store.mutate((data) => {
         data.sessions = data.sessions.filter((item) => item.userId !== user.id || Date.parse(item.expiresAt) > Date.now());
         data.sessions.push(session.record);
-        clearLoginFailures(data, loginBucket);
       });
       setSessionCookies(req, res, session);
       return res.json({ user: publicUser(user) });

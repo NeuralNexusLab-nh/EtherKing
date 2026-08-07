@@ -3,12 +3,8 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
-  LOGIN_FAILURE_WINDOW_MS,
   NEXA_VERIFY_URL,
-  clearLoginFailures,
   consumeGenerationAllowance,
-  loginCaptchaRequired,
-  recordLoginFailure,
   verifyCaptchaProof
 } = require('../lib/captcha');
 
@@ -41,28 +37,13 @@ test('rejects malformed and expired NexaCAPTCHA proofs', async () => {
   }), { code: 'CAPTCHA_INVALID' });
 });
 
-test('requires chat verification after a server-selected 10 to 15 generation interval', () => {
+test('requires chat verification after every 10 generations', () => {
   const data = { captchaUsage: [] };
-  const fixedThreshold = () => 10;
   for (let count = 0; count < 10; count += 1) {
-    consumeGenerationAllowance(data, 'user-a', { randomInt: fixedThreshold });
+    consumeGenerationAllowance(data, 'user-a');
   }
-  assert.throws(() => consumeGenerationAllowance(data, 'user-a', { randomInt: fixedThreshold }), { code: 'CAPTCHA_REQUIRED' });
-  const reset = consumeGenerationAllowance(data, 'user-a', { randomInt: fixedThreshold, verified: true });
+  assert.throws(() => consumeGenerationAllowance(data, 'user-a'), { code: 'CAPTCHA_REQUIRED' });
+  const reset = consumeGenerationAllowance(data, 'user-a', { verified: true });
   assert.equal(reset.threshold, 10);
   assert.equal(reset.remaining, 9);
-});
-
-test('requires login verification after three failures in a rolling window', () => {
-  const data = { loginFailures: [] };
-  const now = Date.UTC(2026, 7, 7, 12, 0, 0);
-  assert.equal(loginCaptchaRequired(data, 'bucket', now), false);
-  recordLoginFailure(data, 'bucket', now);
-  recordLoginFailure(data, 'bucket', now);
-  recordLoginFailure(data, 'bucket', now);
-  assert.equal(loginCaptchaRequired(data, 'bucket', now), true);
-  assert.equal(loginCaptchaRequired(data, 'bucket', now + LOGIN_FAILURE_WINDOW_MS + 1), false);
-  recordLoginFailure(data, 'bucket', now + LOGIN_FAILURE_WINDOW_MS + 1);
-  clearLoginFailures(data, 'bucket');
-  assert.equal(loginCaptchaRequired(data, 'bucket', now + LOGIN_FAILURE_WINDOW_MS + 1), false);
 });

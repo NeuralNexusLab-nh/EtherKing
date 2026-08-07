@@ -103,7 +103,7 @@ async function submitAuth(form, endpoint) {
   button.textContent = 'Please wait...';
   try {
     const data = Object.fromEntries(new FormData(form).entries());
-    if (endpoint === '/api/auth/register') data.captcha = await requestHumanVerification();
+    data.captcha = await requestHumanVerification();
     let response;
     let payload;
     for (;;) {
