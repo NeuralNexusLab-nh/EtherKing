@@ -9,8 +9,8 @@ const {
 } = require('../lib/captcha');
 
 const proof = {
-  verificationId: 'ver_abcdefghijklmnopqrstuv',
-  responseToken: 'abcdefghijklmnopqrstuvwxyzABCDEF'
+  verificationId: 'ver_abcdefghijkl',
+  responseToken: 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ012345678901'
 };
 
 test('verifies a NexaCAPTCHA proof with the documented server endpoint', async () => {
@@ -32,6 +32,10 @@ test('verifies a NexaCAPTCHA proof with the documented server endpoint', async (
 
 test('rejects malformed and expired NexaCAPTCHA proofs', async () => {
   await assert.rejects(verifyCaptchaProof({}, { fetchImpl: async () => { throw new Error('must not run'); } }), { code: 'CAPTCHA_INVALID' });
+  await assert.rejects(verifyCaptchaProof({
+    verificationId: 'ver_abcdefghijklmnopqrstuv',
+    responseToken: 'abcdefghijklmnopqrstuvwxyzABCDEF'
+  }, { fetchImpl: async () => { throw new Error('must not run'); } }), { code: 'CAPTCHA_INVALID' });
   await assert.rejects(verifyCaptchaProof(proof, {
     fetchImpl: async () => new Response(JSON.stringify({ success: false, errorCode: 'invalid-or-expired-verification' }), { status: 200 })
   }), { code: 'CAPTCHA_INVALID' });
