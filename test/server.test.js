@@ -63,7 +63,7 @@ test('serves the account page with strict browser security headers', async () =>
     assert.equal(response.headers.get('referrer-policy'), 'no-referrer');
     assert.match(response.headers.get('cache-control'), /no-store/);
     assert.match(body, /Welcome back/);
-    assert.match(body, /https:\/\/nexacaptcha\.zone\.id\/captcha\/horizon\.js/);
+    assert.match(body, /https:\/\/nexacaptcha\.zone\.id\/captcha\/gravity\.js/);
   });
 });
 
