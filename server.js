@@ -26,6 +26,7 @@ const { MODEL_REGISTRY, apiKeyFor, generateShortTitle, streamProviderText } = re
 const { PLAN_COSTS, chargeQuota, getQuotaUsage, releaseQuota, reserveQuota } = require('./lib/quota');
 
 const PORT = Number(process.env.PORT || 3000);
+const BASE_ORIGIN = 'https://etherking.nxlabtw.com';
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const DATA_FILE = path.join(__dirname, 'data', 'store.json');
 const SESSION_COOKIE = 'etherking_session';
@@ -726,7 +727,7 @@ function createApp(store, options = {}) {
         return item;
       });
       if (!chat) return res.status(404).json({ error: 'Chat not found.' });
-      res.json({ chat: serializeChat(chat), url: `/share/${chat.shareId}` });
+      res.json({ chat: serializeChat(chat), url: `${BASE_ORIGIN}/share/${chat.shareId}` });
     } catch (error) {
       next(error);
     }
@@ -964,5 +965,5 @@ if (require.main === module) {
   });
 }
 
-module.exports = { DATA_FILE, MODEL_REGISTRY, createApp, processGeneration, queueGeneration, reserveQuota };
+module.exports = { BASE_ORIGIN, DATA_FILE, MODEL_REGISTRY, createApp, processGeneration, queueGeneration, reserveQuota };
 

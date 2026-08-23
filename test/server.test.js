@@ -144,8 +144,9 @@ test('registers a user and persists an authenticated chat', async () => {
     });
     assert.equal(shared.status, 200);
     const sharePayload = await shared.json();
-    assert.match(sharePayload.url, /^\/share\/[A-Za-z0-9_-]{24}$/);
-    const publicResponse = await fetch(`${baseUrl}${sharePayload.url}`);
+    assert.match(sharePayload.url, /^https:\/\/etherking\.nxlabtw\.com\/share\/[A-Za-z0-9_-]{24}$/);
+    const sharePath = new URL(sharePayload.url).pathname;
+    const publicResponse = await fetch(`${baseUrl}${sharePath}`);
     assert.equal(publicResponse.status, 200);
   }, { verifyCaptchaProof: async () => ({ verifiedAt: new Date().toISOString() }) });
 });

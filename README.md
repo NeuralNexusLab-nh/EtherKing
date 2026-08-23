@@ -2,6 +2,8 @@
 
 EtherKing is an account-based, multi-model chat application with server-persisted conversations, per-user rolling point limits, background generation, and a responsive dark/light interface.
 
+Production URL: `https://etherking.nxlabtw.com`
+
 ## Features
 
 - Email/password registration, login, logout, and permanent account deletion
