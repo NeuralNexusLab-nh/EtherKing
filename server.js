@@ -404,12 +404,12 @@ function createApp(store, options = {}) {
     res.setHeader('Expires', '0');
     res.setHeader('Content-Security-Policy', [
       "default-src 'self'",
-      "script-src 'self' https://nexacaptcha.zone.id",
+      "script-src 'self' https://nexacaptcha.nxlabtw.com",
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data:",
       "connect-src 'self'",
       "font-src 'self'",
-      "frame-src https://nexacaptcha.zone.id",
+      "frame-src https://nexacaptcha.nxlabtw.com",
       "object-src 'none'",
       "base-uri 'none'",
       "form-action 'self'",
