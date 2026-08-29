@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { MODEL_REGISTRY, generateShortTitle, providerRequest, searchPublicWeb } = require('../lib/providers');
+const { MODEL_REGISTRY, generateShortTitle, providerRequest, searchPublicWeb, streamProviderText } = require('../lib/providers');
 
 test('builds Ollama cloud chat requests using the documented NDJSON endpoint', () => {
   const model = 'gpt-oss:120b';
@@ -64,6 +64,49 @@ test('assigns DeepSeek Flash and Ollama models to Plus', () => {
 test('assigns GPT mini and nano models to Basic', () => {
   for (const id of ['gpt-5-nano', 'gpt-4o-mini', 'gpt-4.1-nano', 'gpt-5-mini', 'o4-mini', 'gpt-5.4-nano', 'gpt-5.4-mini', 'gpt-5.6-terra', 'gpt-5.6-luna']) {
     assert.equal(MODEL_REGISTRY[id].plan, 'basic');
+  }
+});
+
+test('aborts a slow OpenAI Flex request before retrying with the default service tier', async () => {
+  const originalKey = process.env.OAAPI;
+  process.env.OAAPI = 'test-key';
+  const bodies = [];
+  let flexSignal;
+  try {
+    let callCount = 0;
+    let output = '';
+    await streamProviderText('gpt-5.6-luna', MODEL_REGISTRY['gpt-5.6-luna'], [{ role: 'user', content: 'Hello' }], (text) => {
+      output += text;
+    }, {
+      flexFirstTextTimeoutMs: 10,
+      fetchImpl: async (url, options) => {
+        assert.equal(url, 'https://api.openai.com/v1/chat/completions');
+        bodies.push(JSON.parse(options.body));
+        callCount += 1;
+        if (callCount === 1) {
+          flexSignal = options.signal;
+          const body = new ReadableStream({
+            start(controller) {
+              options.signal.addEventListener('abort', () => controller.error(options.signal.reason), { once: true });
+            }
+          });
+          return new Response(body, { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
+        }
+        assert.equal(flexSignal.aborted, true);
+        return new Response('data: {"choices":[{"delta":{"content":"Standard reply"}}]}\n\ndata: [DONE]\n\n', {
+          status: 200,
+          headers: { 'Content-Type': 'text/event-stream' }
+        });
+      }
+    });
+    assert.equal(output, 'Standard reply');
+    assert.equal(bodies.length, 2);
+    assert.equal(bodies[0].service_tier, 'flex');
+    assert.equal(bodies[1].service_tier, 'default');
+    assert.deepEqual(bodies[1].messages, bodies[0].messages);
+  } finally {
+    if (originalKey === undefined) delete process.env.OAAPI;
+    else process.env.OAAPI = originalKey;
   }
 });
 
