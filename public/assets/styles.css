@@ -1200,6 +1200,73 @@ body {
   color: var(--color-hollow);
 }
 
+.composer-tool-button {
+  display: inline-flex;
+  min-height: 36px;
+  flex: 0 0 auto;
+  padding: 0 var(--spacing-10);
+  align-items: center;
+  gap: var(--spacing-6);
+  border: 1px solid transparent;
+  border-radius: var(--radius-buttons);
+  background: transparent;
+  color: var(--color-mid-ash);
+  font-size: 13px;
+  font-weight: 500;
+  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease, transform 160ms ease;
+}
+
+.composer-tool-button svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.composer-tool-button:hover:not(:disabled) { background: var(--color-hover-veil); color: var(--color-graphite-ink); }
+.composer-tool-button.active {
+  border-color: color-mix(in srgb, var(--accent-green) 34%, transparent);
+  background: var(--accent-green-soft);
+  color: var(--accent-green);
+  transform: translateY(-1px);
+}
+.composer-tool-button.active:hover:not(:disabled) { background: var(--accent-green-soft); color: var(--accent-green); }
+.composer-tool-button:disabled { cursor: default; opacity: 0.45; }
+
+.message-sources {
+  margin-top: var(--spacing-16);
+  padding-top: var(--spacing-12);
+  border-top: 1px solid var(--color-hairline);
+}
+
+.message-sources > strong {
+  display: block;
+  margin-bottom: var(--spacing-8);
+  color: var(--color-mid-ash);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.source-list { display: flex; flex-wrap: wrap; gap: var(--spacing-6); }
+.source-list a {
+  max-width: min(100%, 280px);
+  padding: var(--spacing-6) var(--spacing-10);
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--accent-purple) 24%, var(--color-hairline));
+  border-radius: var(--radius-buttons);
+  background: var(--accent-purple-soft);
+  color: var(--color-graphite-ink);
+  font-size: 13px;
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: border-color 160ms ease, transform 160ms ease;
+}
+.source-list a:hover { border-color: var(--accent-purple); transform: translateY(-1px); }
+
 .send-button {
   width: 36px;
   height: 36px;

@@ -35,7 +35,7 @@ test('serves only explicitly shared chats through a separate opaque share URL', 
     await store.mutate((data) => {
       data.chats.push({ id: chatId, userId, title: 'Shared chat', model: 'gpt-5.4-mini', isShared: true, shareId, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
       data.chats.push({ id: privateChatId, userId, title: 'Private chat', model: 'gpt-5.4-mini', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
-      data.messages.push({ id: crypto.randomUUID(), chatId, userId, role: 'assistant', content: 'Public answer', createdAt: new Date().toISOString() });
+      data.messages.push({ id: crypto.randomUUID(), chatId, userId, role: 'assistant', content: 'Public answer', sources: [{ title: 'Public source', url: 'https://example.com' }], createdAt: new Date().toISOString() });
     });
     const apiResponse = await fetch(`${baseUrl}/api/shared/chats/${shareId}`);
     assert.equal(apiResponse.status, 200);
@@ -43,6 +43,7 @@ test('serves only explicitly shared chats through a separate opaque share URL', 
     assert.equal(payload.readOnly, true);
     assert.equal(payload.chat.id, undefined);
     assert.equal(payload.messages[0].content, 'Public answer');
+    assert.deepEqual(payload.messages[0].sources, [{ title: 'Public source', url: 'https://example.com' }]);
     const pageResponse = await fetch(`${baseUrl}/share/${shareId}`, { redirect: 'manual' });
     assert.equal(pageResponse.status, 200);
     const privateApiResponse = await fetch(`${baseUrl}/api/shared/chats/${privateChatId}`);
@@ -127,7 +128,7 @@ test('registers a user and persists an authenticated chat', async () => {
     const created = await fetch(`${baseUrl}/api/chats`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Cookie: cookieHeader, Origin: baseUrl, 'X-CSRF-Token': csrfToken },
-      body: JSON.stringify({ title: 'Persist this chat', model: 'gpt-5.4-mini' })
+      body: JSON.stringify({ title: 'Persist this chat' })
     });
     assert.equal(created.status, 201);
     const chat = (await created.json()).chat;
@@ -136,6 +137,7 @@ test('registers a user and persists an authenticated chat', async () => {
     assert.equal(fetched.status, 200);
     const fetchedChat = (await fetched.json()).chat;
     assert.equal(fetchedChat.title, 'New chat');
+    assert.equal(fetchedChat.model, 'gpt-5.6-luna');
     assert.equal(fetchedChat.isShared, false);
 
     const shared = await fetch(`${baseUrl}/api/chats/${chat.id}/share`, {

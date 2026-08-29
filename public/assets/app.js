@@ -342,7 +342,7 @@ async function loadModels() {
   });
   const saved = localStorage.getItem('etherking_model');
   if (saved && payload.models.some((model) => model.id === saved)) modelSelect.value = saved;
-  else if (payload.models.some((model) => model.id === 'gpt-5.4-mini')) modelSelect.value = 'gpt-5.4-mini';
+  else if (payload.models.some((model) => model.id === 'gpt-5.6-luna')) modelSelect.value = 'gpt-5.6-luna';
 }
 
 document.getElementById('account-button').addEventListener('click', () => accountDialog.showModal());

@@ -85,3 +85,80 @@ test('background generation finishes and persists after the enqueue response is 
   }
 });
 
+test('web search runs before generation and persists sources with the response', async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'etherking-search-'));
+  const originalFetch = global.fetch;
+  const originalOpenAiKey = process.env.OAAPI;
+  const originalDeepSeekKey = process.env.DSAPI;
+  process.env.OAAPI = 'openai-test-key';
+  process.env.DSAPI = 'deepseek-test-key';
+  const requests = [];
+  global.fetch = async (url, options) => {
+    const body = JSON.parse(options.body);
+    requests.push({ url: String(url), body });
+    if (String(url).endsWith('/responses')) {
+      return new Response(JSON.stringify({
+        output: [
+          { type: 'web_search_call', action: { sources: [{ title: 'Public source', url: 'https://example.com/current' }] } },
+          { type: 'message', content: [{ type: 'output_text', text: 'Fresh public facts.' }] }
+        ]
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+    if (String(url).includes('api.deepseek.com')) {
+      return new Response('data: {"choices":[{"delta":{"content":"Answer with source"}}]}\n\ndata: [DONE]\n\n', {
+        status: 200,
+        headers: { 'Content-Type': 'text/event-stream' }
+      });
+    }
+    throw new Error(`Unexpected URL: ${url}`);
+  };
+  try {
+    const store = await new FileStore(path.join(directory, 'store.json')).init();
+    const userId = crypto.randomUUID();
+    const chatId = crypto.randomUUID();
+    await store.mutate((data) => data.users.push({ id: userId }));
+    const queued = await queueGeneration(store, {
+      userId,
+      chatId,
+      model: 'deepseek-v4-flash',
+      webSearch: true,
+      createChat() {
+        const now = new Date().toISOString();
+        return { id: chatId, userId, title: 'Existing title', model: 'deepseek-v4-flash', createdAt: now, updatedAt: now };
+      },
+      prepare(data) {
+        const message = { id: crypto.randomUUID(), chatId, userId, role: 'user', content: 'What changed today?', createdAt: new Date().toISOString() };
+        data.messages.push(message);
+        return message;
+      }
+    });
+
+    const deadline = Date.now() + 2000;
+    let status;
+    do {
+      status = store.read((data) => data.generationJobs.find((job) => job.id === queued.job.id)?.status);
+      if (status === 'completed') break;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    } while (Date.now() < deadline);
+
+    assert.equal(status, 'completed');
+    assert.equal(requests[0].url, 'https://api.openai.com/v1/responses');
+    assert.equal(requests[1].url, 'https://api.deepseek.com/chat/completions');
+    assert.match(requests[1].body.messages[0].content, /Fresh public facts/);
+    assert.match(requests[1].body.messages[0].content, /https:\/\/example\.com\/current/);
+    const assistant = store.read((data) => data.messages.find((message) => message.role === 'assistant'));
+    assert.equal(assistant.webSearch, true);
+    assert.deepEqual(assistant.sources, [{ title: 'Public source', url: 'https://example.com/current' }]);
+    const job = store.read((data) => data.generationJobs.find((item) => item.id === queued.job.id));
+    assert.equal(job.phase, 'completed');
+    assert.deepEqual(job.sources, assistant.sources);
+  } finally {
+    global.fetch = originalFetch;
+    if (originalOpenAiKey === undefined) delete process.env.OAAPI;
+    else process.env.OAAPI = originalOpenAiKey;
+    if (originalDeepSeekKey === undefined) delete process.env.DSAPI;
+    else process.env.DSAPI = originalDeepSeekKey;
+    await fs.rm(directory, { recursive: true, force: true });
+  }
+});
+

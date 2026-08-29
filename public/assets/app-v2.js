@@ -10,6 +10,7 @@ const state = {
   activeChatId: null,
   messages: [],
   generation: null,
+  webSearchEnabled: false,
   submitting: false,
   modelsReady: false,
   pollTimer: null,
@@ -28,6 +29,7 @@ const composer = document.getElementById('composer');
 const input = document.getElementById('message-input');
 const sendButton = document.getElementById('send-button');
 const modelSelect = document.getElementById('model-select');
+const webSearchButton = document.getElementById('web-search-toggle');
 const accountDialog = document.getElementById('account-dialog');
 const usageDialog = document.getElementById('usage-dialog');
 const toast = document.getElementById('toast');
@@ -200,8 +202,18 @@ function setGenerating(value) {
   composer.classList.toggle('generating', value);
   input.disabled = value;
   modelSelect.disabled = value || !state.modelsReady || state.readOnly;
+  webSearchButton.disabled = value || state.readOnly;
   resizeInput();
 }
+
+function setWebSearch(value) {
+  state.webSearchEnabled = value === true;
+  webSearchButton.classList.toggle('active', state.webSearchEnabled);
+  webSearchButton.setAttribute('aria-pressed', String(state.webSearchEnabled));
+  webSearchButton.title = state.webSearchEnabled ? 'Web search is on' : 'Search the public web';
+}
+
+webSearchButton.addEventListener('click', () => setWebSearch(!state.webSearchEnabled));
 
 input.addEventListener('input', resizeInput);
 input.addEventListener('keydown', (event) => {
@@ -415,7 +427,7 @@ function beginEditMessage(message, body, actions) {
     try {
       const payload = await generationApi(`/api/chats/${encodeURIComponent(state.activeChatId)}/messages/${encodeURIComponent(message.id)}`, {
         method: 'PATCH',
-        body: JSON.stringify({ content, model: modelSelect.value })
+        body: JSON.stringify({ content, model: modelSelect.value, webSearch: state.webSearchEnabled })
       });
       state.messages = state.messages.filter((item) => item.id !== message.id);
       state.messages.push(payload.message);
@@ -434,7 +446,7 @@ async function regenerateMessage(message) {
   try {
     const payload = await generationApi(`/api/chats/${encodeURIComponent(state.activeChatId)}/messages/${encodeURIComponent(message.id)}/regenerate`, {
       method: 'POST',
-      body: JSON.stringify({ model: modelSelect.value })
+      body: JSON.stringify({ model: modelSelect.value, webSearch: state.webSearchEnabled })
     });
     state.messages = state.messages.filter((item) => item.id !== message.id);
     state.generation = payload.generation;
@@ -473,13 +485,31 @@ function createMessageElement(message) {
     if (message.pending) {
       const pending = document.createElement('p');
       pending.className = 'streaming-text';
-      pending.textContent = message.content || 'Thinking...';
+      pending.textContent = message.content || message.placeholder || 'Thinking...';
       content.dataset.streamingContent = message.content || '';
       content.appendChild(pending);
     } else {
       renderSafeMarkdown(content, message.content);
     }
     column.appendChild(content);
+    if (!message.pending && Array.isArray(message.sources) && message.sources.length) {
+      const sourceBlock = document.createElement('section');
+      sourceBlock.className = 'message-sources';
+      const heading = document.createElement('strong');
+      heading.textContent = 'Sources';
+      const sourceList = document.createElement('div');
+      sourceList.className = 'source-list';
+      for (const source of message.sources) {
+        const link = document.createElement('a');
+        link.href = source.url;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        link.textContent = source.title || 'Source';
+        sourceList.appendChild(link);
+      }
+      sourceBlock.append(heading, sourceList);
+      column.appendChild(sourceBlock);
+    }
     if (!message.pending) {
       const actions = document.createElement('div');
       actions.className = 'message-actions';
@@ -493,7 +523,7 @@ function createMessageElement(message) {
 }
 
 function messageFingerprint(items) {
-  return items.map((message) => `${message.id}:${message.content}`).join('|');
+  return items.map((message) => `${message.id}:${message.content}:${(message.sources || []).map((source) => source.url).join(',')}`).join('|');
 }
 
 function updateStreamingMessage() {
@@ -503,8 +533,12 @@ function updateStreamingMessage() {
   const content = article.querySelector('.message-content');
   const next = state.generation?.content || '';
   const previous = content.dataset.streamingContent || '';
+  const placeholder = state.generation?.phase === 'searching' ? 'Searching the web...' : 'Thinking...';
   let text = content.querySelector('.streaming-text');
-  if (!next && !previous) return;
+  if (!next && !previous) {
+    if (text) text.textContent = placeholder;
+    return;
+  }
   if (!text || !previous) {
     text = document.createElement('p');
     text.className = 'streaming-text';
@@ -522,7 +556,12 @@ function updateStreamingMessage() {
 function renderMessages() {
   messages.replaceChildren();
   state.messages.forEach((message) => messages.appendChild(createMessageElement(message)));
-  if (isGenerating()) messages.appendChild(createMessageElement({ role: 'assistant', content: state.generation?.content || '', pending: true }));
+  if (isGenerating()) messages.appendChild(createMessageElement({
+    role: 'assistant',
+    content: state.generation?.content || '',
+    placeholder: state.generation?.phase === 'searching' ? 'Searching the web...' : 'Thinking...',
+    pending: true
+  }));
   state.renderedMessageFingerprint = messageFingerprint(state.messages);
   const hasMessages = state.messages.length > 0 || isGenerating();
   emptyState.hidden = hasMessages;
@@ -701,12 +740,12 @@ async function sendMessage(content) {
     if (state.activeChatId) {
       payload = await generationApi(`/api/chats/${encodeURIComponent(state.activeChatId)}/messages`, {
         method: 'POST',
-        body: JSON.stringify({ content, model: modelSelect.value })
+        body: JSON.stringify({ content, model: modelSelect.value, webSearch: state.webSearchEnabled })
       });
     } else {
       payload = await generationApi('/api/chats', {
         method: 'POST',
-        body: JSON.stringify({ content, model: modelSelect.value })
+        body: JSON.stringify({ content, model: modelSelect.value, webSearch: state.webSearchEnabled })
       });
       state.activeChatId = payload.chat.id;
       state.currentChat = payload.chat;
@@ -767,7 +806,7 @@ async function loadModels() {
     }
     const saved = storedModel();
     if (saved && payload.models.some((model) => model.id === saved)) modelSelect.value = saved;
-    else if (payload.models.some((model) => model.id === 'gpt-5.4-mini')) modelSelect.value = 'gpt-5.4-mini';
+    else if (payload.models.some((model) => model.id === 'gpt-5.6-luna')) modelSelect.value = 'gpt-5.6-luna';
     state.modelsReady = modelSelect.options.length > 0;
     if (!state.modelsReady) throw new Error('No models are available.');
   } catch (error) {

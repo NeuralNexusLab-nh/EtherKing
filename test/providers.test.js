@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { MODEL_REGISTRY, generateShortTitle, providerRequest } = require('../lib/providers');
+const { MODEL_REGISTRY, generateShortTitle, providerRequest, searchPublicWeb } = require('../lib/providers');
 
 test('builds Ollama cloud chat requests using the documented NDJSON endpoint', () => {
   const model = 'gpt-oss:120b';
@@ -49,7 +49,7 @@ test('uses gpt-5.4-nano for concise generated chat titles', async () => {
 });
 
 test('assigns full GPT and DeepSeek Pro models to Pro', () => {
-  for (const id of ['deepseek-v4-pro', 'gpt-4o', 'gpt-4.1', 'gpt-5', 'gpt-5.1', 'gpt-5.2', 'gpt-5.4']) {
+  for (const id of ['deepseek-v4-pro', 'gpt-4o', 'gpt-4.1', 'gpt-5', 'gpt-5.1', 'gpt-5.2', 'gpt-5.4', 'gpt-5.6-sol']) {
     assert.equal(MODEL_REGISTRY[id].plan, 'pro');
   }
 });
@@ -62,8 +62,48 @@ test('assigns DeepSeek Flash and Ollama models to Plus', () => {
 });
 
 test('assigns GPT mini and nano models to Basic', () => {
-  for (const id of ['gpt-5-nano', 'gpt-4o-mini', 'gpt-4.1-nano', 'gpt-5-mini', 'o4-mini', 'gpt-5.4-nano', 'gpt-5.4-mini']) {
+  for (const id of ['gpt-5-nano', 'gpt-4o-mini', 'gpt-4.1-nano', 'gpt-5-mini', 'o4-mini', 'gpt-5.4-nano', 'gpt-5.4-mini', 'gpt-5.6-terra', 'gpt-5.6-luna']) {
     assert.equal(MODEL_REGISTRY[id].plan, 'basic');
+  }
+});
+
+test('searches the public web with GPT-5.6 Luna and returns safe deduplicated sources', async () => {
+  const originalKey = process.env.OAAPI;
+  process.env.OAAPI = 'test-key';
+  let requestBody;
+  try {
+    const result = await searchPublicWeb('latest public information', {
+      fetchImpl: async (url, options) => {
+        assert.equal(url, 'https://api.openai.com/v1/responses');
+        requestBody = JSON.parse(options.body);
+        return new Response(JSON.stringify({
+          output: [
+            { type: 'web_search_call', action: { sources: [
+              { title: 'Example source', url: 'https://example.com/news' },
+              { title: 'Duplicate', url: 'https://example.com/news' },
+              { title: 'Unsafe', url: 'javascript:alert(1)' }
+            ] } },
+            { type: 'message', content: [{
+              type: 'output_text',
+              text: 'Current research notes.',
+              annotations: [{ type: 'url_citation', title: 'Second source', url: 'https://docs.example.org/page' }]
+            }] }
+          ]
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+    });
+    assert.equal(requestBody.model, 'gpt-5.6-luna');
+    assert.deepEqual(requestBody.tools, [{ type: 'web_search' }]);
+    assert.deepEqual(requestBody.include, ['web_search_call.action.sources']);
+    assert.equal(requestBody.store, false);
+    assert.equal(result.text, 'Current research notes.');
+    assert.deepEqual(result.sources, [
+      { title: 'Example source', url: 'https://example.com/news' },
+      { title: 'Second source', url: 'https://docs.example.org/page' }
+    ]);
+  } finally {
+    if (originalKey === undefined) delete process.env.OAAPI;
+    else process.env.OAAPI = originalKey;
   }
 });
 

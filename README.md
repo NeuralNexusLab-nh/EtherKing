@@ -9,7 +9,8 @@ Production URL: `https://etherking.nxlabtw.com`
 - Email/password registration, login, logout, and permanent account deletion
 - Opaque server-side sessions stored in a local data file
 - Chats, messages, background generation state, auth throttles, and per-user quotas persisted across restarts
-- OpenAI, DeepSeek, and Ollama cloud model support
+- OpenAI, DeepSeek, and Ollama cloud model support, including GPT-5.6 Luna, Terra, and Sol
+- Optional public-web search with persisted source links for normal and shared chats
 - Authentication and CSRF validation for chat, usage, and account operations
 - SameSite cookies, same-origin enforcement, strict security headers, login throttling, and request size limits
 - Safe text/code rendering with no model-controlled HTML or executable code iframe
@@ -47,7 +48,7 @@ EtherKing reads only these environment variables:
 | Name | Required | Description |
 | --- | --- | --- |
 | `PORT` | No | HTTP port, defaults to `3000`. |
-| `OAAPI` | For OpenAI models | OpenAI API key. Never expose it to the browser. |
+| `OAAPI` | For OpenAI models and web search | OpenAI API key. Never expose it to the browser. |
 | `DSAPI` | For DeepSeek models | DeepSeek API key. Never expose it to the browser. |
 | `OLAPI` | For Ollama models | Ollama cloud API key for `https://ollama.com/api`. Never expose it to the browser. |
 
