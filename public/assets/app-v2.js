@@ -223,33 +223,6 @@ input.addEventListener('keydown', (event) => {
   }
 });
 
-function appendInlineMarkdown(container, source) {
-  const pattern = /(``[^\n]+?``|`[^`\n]+`|\*\*[^*\n]+\*\*|__[^_\n]+__|\*[^*\n]+\*|_[^_\n]+_)/g;
-  let cursor = 0;
-  let match;
-  while ((match = pattern.exec(source))) {
-    if (match.index > cursor) container.appendChild(document.createTextNode(source.slice(cursor, match.index)));
-    const token = match[0];
-    let element;
-    if (token.startsWith('``')) {
-      element = document.createElement('code');
-      element.textContent = token.slice(2, -2);
-    } else if (token.startsWith('`')) {
-      element = document.createElement('code');
-      element.textContent = token.slice(1, -1);
-    } else if (token.startsWith('**') || token.startsWith('__')) {
-      element = document.createElement('strong');
-      element.textContent = token.slice(2, -2);
-    } else {
-      element = document.createElement('em');
-      element.textContent = token.slice(1, -1);
-    }
-    container.appendChild(element);
-    cursor = match.index + token.length;
-  }
-  if (cursor < source.length) container.appendChild(document.createTextNode(source.slice(cursor)));
-}
-
 function appendHighlightedCode(container, source) {
   const pattern = /(\/\/[^\n]*|#[^\n]*|\/\*[\s\S]*?\*\/|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`|\b(?:async|await|break|case|catch|class|const|continue|def|else|export|false|finally|for|from|function|if|import|in|let|new|null|print|return|switch|throw|true|try|undefined|var|while)\b|\b\d+(?:\.\d+)?\b)/g;
   let cursor = 0;
@@ -269,7 +242,7 @@ function appendHighlightedCode(container, source) {
   if (cursor < source.length) container.appendChild(document.createTextNode(source.slice(cursor)));
 }
 
-function appendCodeBlock(container, source, language) {
+function createCodeBlock(source, language) {
   const block = document.createElement('div');
   block.className = 'code-block';
   const toolbar = document.createElement('div');
@@ -287,83 +260,98 @@ function appendCodeBlock(container, source, language) {
   appendHighlightedCode(code, source);
   pre.appendChild(code);
   block.append(toolbar, pre);
-  container.appendChild(block);
+  return block;
+}
+
+const SAFE_MARKDOWN_TAGS = new Set([
+  'a', 'blockquote', 'br', 'code', 'del', 'em', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+  'hr', 'input', 'li', 'ol', 'p', 'pre', 'strong', 'table', 'tbody', 'td', 'th', 'thead', 'tr', 'ul'
+]);
+const DROP_MARKDOWN_TAGS = new Set(['embed', 'iframe', 'math', 'object', 'script', 'style', 'svg']);
+
+function safeMarkdownUrl(value) {
+  const source = String(value || '').trim();
+  if (!source) return null;
+  if (source.startsWith('#')) return source;
+  try {
+    const url = new URL(source, window.location.href);
+    return ['http:', 'https:', 'mailto:'].includes(url.protocol) ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
+function sanitizeMarkdownNode(node) {
+  if (node.nodeType === Node.TEXT_NODE) return document.createTextNode(node.textContent || '');
+  if (node.nodeType !== Node.ELEMENT_NODE) return document.createDocumentFragment();
+  const tag = node.tagName.toLowerCase();
+  if (DROP_MARKDOWN_TAGS.has(tag)) return document.createDocumentFragment();
+  if (tag === 'img') {
+    const text = document.createElement('span');
+    text.className = 'markdown-image-alt';
+    text.textContent = node.getAttribute('alt') || 'Image';
+    return text;
+  }
+  if (!SAFE_MARKDOWN_TAGS.has(tag)) {
+    const fragment = document.createDocumentFragment();
+    for (const child of node.childNodes) fragment.appendChild(sanitizeMarkdownNode(child));
+    return fragment;
+  }
+  const element = document.createElement(tag);
+  if (tag === 'a') {
+    const href = safeMarkdownUrl(node.getAttribute('href'));
+    if (href) {
+      element.href = href;
+      element.rel = 'noopener noreferrer nofollow';
+      if (!href.startsWith('#')) element.target = '_blank';
+    }
+    const title = String(node.getAttribute('title') || '').replace(/[\r\n]+/g, ' ').trim().slice(0, 200);
+    if (title) element.title = title;
+  } else if (tag === 'ol') {
+    const start = Number.parseInt(node.getAttribute('start'), 10);
+    if (Number.isSafeInteger(start) && start > 0) element.start = start;
+  } else if (tag === 'code') {
+    const language = /(?:^|\s)language-([\w+-]{1,30})(?:\s|$)/.exec(node.className)?.[1];
+    if (language) element.className = `language-${language}`;
+  } else if (tag === 'th' || tag === 'td') {
+    const align = node.getAttribute('align');
+    if (['left', 'center', 'right'].includes(align)) element.style.textAlign = align;
+  } else if (tag === 'input') {
+    if (node.getAttribute('type') !== 'checkbox') return document.createDocumentFragment();
+    element.type = 'checkbox';
+    element.disabled = true;
+    element.checked = node.hasAttribute('checked');
+  }
+  for (const child of node.childNodes) element.appendChild(sanitizeMarkdownNode(child));
+  return element;
+}
+
+function enhanceMarkdownCodeBlocks(container) {
+  for (const pre of [...container.querySelectorAll('pre')]) {
+    const code = pre.firstElementChild?.tagName === 'CODE' ? pre.firstElementChild : null;
+    if (!code) continue;
+    const language = /(?:^|\s)language-([\w+-]{1,30})(?:\s|$)/.exec(code.className)?.[1] || '';
+    const source = String(code.textContent || '').replace(/\n$/, '');
+    pre.replaceWith(createCodeBlock(source, language));
+  }
 }
 
 function renderSafeMarkdown(container, content) {
   container.replaceChildren();
-  const lines = String(content || '').replace(/\r\n?/g, '\n').split('\n');
-  let index = 0;
-  while (index < lines.length) {
-    const line = lines[index];
-    if (!line.trim()) {
-      index += 1;
-      continue;
-    }
-    const openingFence = /^\s*(`{3,}|~{3,})([^`]*)$/.exec(line);
-    if (openingFence) {
-      const fence = openingFence[1];
-      const language = openingFence[2].trim().slice(0, 30);
-      const codeLines = [];
-      index += 1;
-      while (index < lines.length && !lines[index].trimStart().startsWith(fence)) codeLines.push(lines[index++]);
-      if (index < lines.length) index += 1;
-      appendCodeBlock(container, codeLines.join('\n'), language);
-      continue;
-    }
-    const heading = /^(#{1,6})\s+(.+)$/.exec(line);
-    if (heading) {
-      const element = document.createElement(`h${heading[1].length}`);
-      appendInlineMarkdown(element, heading[2]);
-      container.appendChild(element);
-      index += 1;
-      continue;
-    }
-    if (/^\s*((-\s*){3,}|(\*\s*){3,}|(_\s*){3,})$/.test(line)) {
-      container.appendChild(document.createElement('hr'));
-      index += 1;
-      continue;
-    }
-    if (/^\s*[-*+]\s+/.test(line)) {
-      const list = document.createElement('ul');
-      while (index < lines.length && /^\s*[-*+]\s+/.test(lines[index])) {
-        const item = document.createElement('li');
-        appendInlineMarkdown(item, lines[index].replace(/^\s*[-*+]\s+/, ''));
-        list.appendChild(item);
-        index += 1;
-      }
-      container.appendChild(list);
-      continue;
-    }
-    if (/^\s*\d+[.)]\s+/.test(line)) {
-      const list = document.createElement('ol');
-      while (index < lines.length && /^\s*\d+[.)]\s+/.test(lines[index])) {
-        const item = document.createElement('li');
-        appendInlineMarkdown(item, lines[index].replace(/^\s*\d+[.)]\s+/, ''));
-        list.appendChild(item);
-        index += 1;
-      }
-      container.appendChild(list);
-      continue;
-    }
-    if (/^\s*>\s?/.test(line)) {
-      const quote = document.createElement('blockquote');
-      const quoteLines = [];
-      while (index < lines.length && /^\s*>\s?/.test(lines[index])) quoteLines.push(lines[index++].replace(/^\s*>\s?/, ''));
-      appendInlineMarkdown(quote, quoteLines.join('\n'));
-      container.appendChild(quote);
-      continue;
-    }
-    const paragraphLines = [line];
-    index += 1;
-    while (index < lines.length && lines[index].trim()
-      && !/^(#{1,6})\s+/.test(lines[index])
-      && !/^\s*(```|[-*+]\s+|\d+[.)]\s+|>\s?)/.test(lines[index])
-      && !/^\s*((-\s*){3,}|(\*\s*){3,}|(_\s*){3,})$/.test(lines[index])) {
-      paragraphLines.push(lines[index++]);
-    }
+  if (!window.marked?.parse) {
     const paragraph = document.createElement('p');
-    appendInlineMarkdown(paragraph, paragraphLines.join('\n'));
+    paragraph.textContent = String(content || '');
+    container.appendChild(paragraph);
+    return;
+  }
+  try {
+    const html = window.marked.parse(String(content || ''), { gfm: true, breaks: true, async: false });
+    const parsed = new DOMParser().parseFromString(html, 'text/html');
+    for (const node of parsed.body.childNodes) container.appendChild(sanitizeMarkdownNode(node));
+    enhanceMarkdownCodeBlocks(container);
+  } catch {
+    const paragraph = document.createElement('p');
+    paragraph.textContent = String(content || '');
     container.appendChild(paragraph);
   }
 }

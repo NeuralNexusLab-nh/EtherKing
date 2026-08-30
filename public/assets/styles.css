@@ -1172,6 +1172,50 @@ body {
   text-underline-offset: 3px;
 }
 
+.message-content a:hover { color: color-mix(in srgb, var(--accent-purple) 78%, var(--color-graphite-ink)); }
+.message-content del { color: var(--color-hollow); }
+.message-content table {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  margin: var(--spacing-16) 0;
+  overflow-x: auto;
+  border-collapse: collapse;
+  border: 1px solid var(--color-hairline);
+  border-radius: var(--radius-cards);
+}
+.message-content th,
+.message-content td {
+  min-width: 120px;
+  padding: var(--spacing-8) var(--spacing-12);
+  border-right: 1px solid var(--color-hairline);
+  border-bottom: 1px solid var(--color-hairline);
+  text-align: left;
+  vertical-align: top;
+}
+.message-content th {
+  background: var(--color-sidebar-mist);
+  color: var(--color-graphite-ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+.message-content tr:last-child td { border-bottom: 0; }
+.message-content th:last-child,
+.message-content td:last-child { border-right: 0; }
+.message-content input[type="checkbox"] {
+  margin: 0 var(--spacing-6) 0 0;
+  accent-color: var(--accent-green);
+  vertical-align: -1px;
+}
+.markdown-image-alt {
+  display: inline-block;
+  padding: 2px var(--spacing-6);
+  border: 1px solid var(--color-hairline);
+  border-radius: 4px;
+  color: var(--color-hollow);
+  font-size: 13px;
+}
+
 .composer-area {
   background: linear-gradient(to bottom, transparent, var(--color-pure-white) 26%, var(--color-pure-white));
 }

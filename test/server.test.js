@@ -75,6 +75,12 @@ test('disables browser caching for frontend assets', async () => {
     assert.match(response.headers.get('cache-control'), /no-store/);
     assert.equal(response.headers.get('etag'), null);
     assert.equal(response.headers.get('last-modified'), null);
+    const markdownParser = await fetch(`${baseUrl}/assets/vendor/marked.umd.js`);
+    assert.equal(markdownParser.status, 200);
+    assert.match(markdownParser.headers.get('cache-control'), /no-store/);
+    assert.equal(markdownParser.headers.get('etag'), null);
+    assert.equal(markdownParser.headers.get('last-modified'), null);
+    assert.match(await markdownParser.text(), /marked/);
   });
 });
 

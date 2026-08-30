@@ -13,7 +13,7 @@ Production URL: `https://etherking.nxlabtw.com`
 - Optional public-web search with persisted source links for normal and shared chats
 - Authentication and CSRF validation for chat, usage, and account operations
 - SameSite cookies, same-origin enforcement, strict security headers, login throttling, and request size limits
-- Safe text/code rendering with no model-controlled HTML or executable code iframe
+- Safe GFM Markdown rendering for tables, links, nested lists, and code blocks, with no model-controlled executable HTML
 - A clean, responsive interface with dark and light themes only
 
 ## Storage

@@ -435,6 +435,7 @@ function createApp(store, options = {}) {
   const verifyCaptcha = options.verifyCaptchaProof || verifyCaptchaProof;
   const app = express();
   app.disable('x-powered-by');
+  app.disable('etag');
   app.set('trust proxy', false);
 
   app.use((req, res, next) => {
@@ -945,6 +946,9 @@ function createApp(store, options = {}) {
     }
   });
 
+  app.get('/assets/vendor/marked.umd.js', (req, res) => {
+    res.sendFile(path.join(__dirname, 'node_modules', 'marked', 'lib', 'marked.umd.js'), { cacheControl: false, lastModified: false });
+  });
   app.use('/assets', express.static(path.join(PUBLIC_DIR, 'assets'), { dotfiles: 'deny', etag: false, fallthrough: false, maxAge: 0, lastModified: false }));
   app.get('/', optionalAuth, (req, res) => {
     if (req.session) return res.redirect('/app');
