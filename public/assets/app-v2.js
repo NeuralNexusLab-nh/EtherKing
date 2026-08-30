@@ -870,18 +870,63 @@ function usageWindow(label, value) {
   return row;
 }
 
+function usageHeading(title, detail) {
+  const heading = document.createElement('div');
+  heading.className = 'usage-plan-heading';
+  const name = document.createElement('strong');
+  name.textContent = title;
+  const description = document.createElement('span');
+  description.textContent = detail;
+  heading.append(name, description);
+  return heading;
+}
+
+function kibibytes(bytes) {
+  const value = Math.max(0, Number(bytes) || 0) / 1024;
+  const formatted = Number.isInteger(value) ? String(value) : (value >= 10 ? value.toFixed(1) : value.toFixed(2));
+  return `${formatted} KiB`;
+}
+
+function storageWindow(storage) {
+  const row = document.createElement('div');
+  row.className = 'usage-window';
+  const copy = document.createElement('div');
+  copy.className = 'usage-copy';
+  const name = document.createElement('span');
+  name.textContent = 'Storage used';
+  const count = document.createElement('strong');
+  count.textContent = `${kibibytes(storage.usedBytes)} / ${kibibytes(storage.capacityBytes)}`;
+  const track = document.createElement('div');
+  track.className = 'usage-track';
+  track.setAttribute('aria-label', `${percentText(storage.usedPercent)} of cloud storage used`);
+  const fill = document.createElement('span');
+  fill.className = 'usage-fill storage-usage-fill';
+  fill.style.width = percentText(storage.usedPercent);
+  copy.append(name, count);
+  track.appendChild(fill);
+  row.append(copy, track);
+  return row;
+}
+
 document.getElementById('usage-button').addEventListener('click', async () => {
   try {
     const payload = await api('/api/usage');
     const usageList = document.getElementById('usage-list');
     usageList.replaceChildren();
-    const card = document.createElement('section');
-    card.className = 'usage-item';
-    card.append(
+    const tokenCard = document.createElement('section');
+    tokenCard.className = 'usage-item';
+    tokenCard.append(
+      usageHeading('Token limits', 'Remaining'),
       usageWindow('5-hour limit', payload.usage.windows.fiveHour),
       usageWindow('Weekly limit', payload.usage.windows.weekly)
     );
-    usageList.appendChild(card);
+    const storageCard = document.createElement('section');
+    storageCard.className = 'usage-item';
+    storageCard.append(
+      usageHeading('Cloud storage limit', 'Chats and messages'),
+      storageWindow(payload.usage.storage)
+    );
+    usageList.append(tokenCard, storageCard);
     usageDialog.showModal();
   } catch (error) {
     showToast(error.message);

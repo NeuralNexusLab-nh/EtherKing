@@ -9,6 +9,7 @@ const path = require('path');
 const { FileStore } = require('../lib/storage');
 const { QUOTA_WINDOWS } = require('../lib/quota');
 const { queueGeneration } = require('../server');
+const { USER_STORAGE_CAPACITY_BYTES } = require('../lib/user-storage');
 
 test('background generation finishes and persists after the enqueue response is returned', async () => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'etherking-background-'));
@@ -158,6 +159,53 @@ test('web search runs before generation and persists sources with the response',
     else process.env.OAAPI = originalOpenAiKey;
     if (originalDeepSeekKey === undefined) delete process.env.DSAPI;
     else process.env.DSAPI = originalDeepSeekKey;
+    await fs.rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('does not save a generated response beyond the per-user cloud storage limit', async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'etherking-storage-limit-'));
+  const originalFetch = global.fetch;
+  const originalKey = process.env.OAAPI;
+  process.env.OAAPI = 'test-key';
+  global.fetch = async () => new Response(`data: {"choices":[{"delta":{"content":"${'y'.repeat(4000)}"}}]}\n\ndata: [DONE]\n\n`, {
+    status: 200,
+    headers: { 'Content-Type': 'text/event-stream' }
+  });
+  try {
+    const store = await new FileStore(path.join(directory, 'store.json')).init();
+    const userId = crypto.randomUUID();
+    const chatId = crypto.randomUUID();
+    const now = new Date().toISOString();
+    await store.mutate((data) => {
+      data.users.push({ id: userId });
+      data.chats.push({ id: chatId, userId, title: 'Storage test', model: 'gpt-5.6-luna', createdAt: now, updatedAt: now });
+      data.messages.push({ id: crypto.randomUUID(), chatId, userId, role: 'user', content: 'x'.repeat(USER_STORAGE_CAPACITY_BYTES - 3000), createdAt: now });
+    });
+    const queued = await queueGeneration(store, {
+      userId,
+      chatId,
+      model: 'gpt-5.6-luna',
+      prepare(data) {
+        const message = { id: crypto.randomUUID(), chatId, userId, role: 'user', content: 'Continue', createdAt: new Date().toISOString() };
+        data.messages.push(message);
+        return message;
+      }
+    });
+    const deadline = Date.now() + 2000;
+    let job;
+    do {
+      job = store.read((data) => data.generationJobs.find((item) => item.id === queued.job.id));
+      if (job?.status === 'failed') break;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    } while (Date.now() < deadline);
+    assert.equal(job.status, 'failed');
+    assert.match(job.error, /200 KiB cloud storage limit/);
+    assert.equal(store.read((data) => data.messages.filter((message) => message.role === 'assistant').length), 0);
+  } finally {
+    global.fetch = originalFetch;
+    if (originalKey === undefined) delete process.env.OAAPI;
+    else process.env.OAAPI = originalKey;
     await fs.rm(directory, { recursive: true, force: true });
   }
 });

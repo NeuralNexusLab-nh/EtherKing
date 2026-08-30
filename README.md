@@ -9,6 +9,7 @@ Production URL: `https://etherking.nxlabtw.com`
 - Email/password registration, login, logout, and permanent account deletion
 - Opaque server-side sessions stored in a local data file
 - Chats, messages, background generation state, auth throttles, and per-user quotas persisted across restarts
+- A 200 KiB per-user cloud storage limit covering that user's chats and messages
 - OpenAI, DeepSeek, and Ollama cloud model support, including GPT-5.6 Luna, Terra, and Sol
 - Optional public-web search with persisted source links for normal and shared chats
 - Authentication and CSRF validation for chat, usage, and account operations
@@ -23,6 +24,8 @@ Runtime data is written to `data/store.json`. The payload is Base64-obfuscated s
 Writes are serialized and use a temporary file plus rename to avoid leaving a partially written store. Keep the `data/` directory out of version control.
 
 This storage mode is intended for one application process on a host with a persistent filesystem. Do not run multiple EtherKing instances against the same file. Back up `data/store.json` before upgrades or host migrations.
+
+EtherKing does not guarantee service availability, data retention, or data recovery. Keep independent backups of important content.
 
 ## Requirements
 

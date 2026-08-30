@@ -64,6 +64,7 @@ test('serves the account page with strict browser security headers', async () =>
     assert.equal(response.headers.get('referrer-policy'), 'no-referrer');
     assert.match(response.headers.get('cache-control'), /no-store/);
     assert.match(body, /Welcome back/);
+    assert.match(body, /not liable for service outages, data loss/);
     assert.match(body, /https:\/\/nexacaptcha\.nxlabtw\.com\/captcha\/gravity\.js/);
   });
 });
@@ -145,6 +146,13 @@ test('registers a user and persists an authenticated chat', async () => {
     assert.equal(fetchedChat.title, 'New chat');
     assert.equal(fetchedChat.model, 'gpt-5.6-luna');
     assert.equal(fetchedChat.isShared, false);
+
+    const usageResponse = await fetch(`${baseUrl}/api/usage`, { headers: { Cookie: cookieHeader } });
+    assert.equal(usageResponse.status, 200);
+    const storage = (await usageResponse.json()).usage.storage;
+    assert.equal(storage.capacityBytes, 200 * 1024);
+    assert.ok(storage.usedBytes > 0);
+    assert.ok(storage.remainingBytes < storage.capacityBytes);
 
     const shared = await fetch(`${baseUrl}/api/chats/${chat.id}/share`, {
       method: 'POST',

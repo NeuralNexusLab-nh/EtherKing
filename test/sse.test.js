@@ -22,3 +22,15 @@ test('ignores comments, malformed events, and empty deltas', () => {
   assert.deepEqual(values, []);
 });
 
+test('propagates consumer errors so generation limits can stop a stream', () => {
+  const decoder = new SseTextDecoder(() => {
+    const error = new Error('Storage limit reached.');
+    error.code = 'STORAGE_EXHAUSTED';
+    throw error;
+  });
+  assert.throws(
+    () => decoder.push('data: {"choices":[{"delta":{"content":"hello"}}]}\n'),
+    (error) => error.code === 'STORAGE_EXHAUSTED'
+  );
+});
+

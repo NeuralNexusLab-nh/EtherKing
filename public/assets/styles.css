@@ -251,6 +251,7 @@ html[data-theme="light"] .moon-icon { display: block; }
 }
 
 .auth-footnote { margin: 24px 0 0; color: var(--faint); font-size: 12px; text-align: center; }
+.service-disclaimer { margin: 10px 0 0; color: var(--faint); font-size: 11px; line-height: 1.45; text-align: center; }
 
 /* Main application */
 .app-page { height: 100vh; overflow: hidden; }
@@ -643,6 +644,7 @@ body.shared-view .conversation { padding-bottom: 60px; }
 .account-summary { display: flex; margin: 24px 0; padding: 16px; align-items: center; gap: 12px; border-radius: 12px; background: var(--surface); }
 .account-summary > div { display: grid; }
 .account-summary span { color: var(--muted); font-size: 13px; }
+.account-data-notice { margin: -10px 0 18px; color: var(--muted); font-size: 12px; line-height: 1.45; }
 .dialog-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .delete-account-panel { margin-top: 22px; padding: 18px; border: 1px solid color-mix(in srgb, var(--danger) 45%, transparent); border-radius: 12px; background: var(--danger-bg); }
 .delete-account-panel h3 { margin: 0 0 5px; font-size: 16px; }
@@ -1365,6 +1367,14 @@ body {
   background: var(--accent-green);
 }
 
+.usage-plan-heading strong {
+  color: var(--color-graphite-ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.storage-usage-fill { background: var(--accent-purple); }
+
 .primary-button,
 .secondary-button,
 .danger-button,
@@ -1421,6 +1431,7 @@ body {
 
 .auth-heading p,
 .auth-footnote,
+.service-disclaimer,
 .field small {
   color: var(--color-hollow);
 }
